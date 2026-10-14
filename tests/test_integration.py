@@ -186,3 +186,15 @@ async def test_cash_and_energy_accounting_exclude_stale_gaps(coordinator):
             await coordinator.async_tick()
         assert coordinator.ledger["avoided"]==before
         assert coordinator.ledger["energy_out"]==pytest.approx(.005)
+
+
+async def test_fresh_nws_all_clear_does_not_expire_with_unchanged_entity(coordinator):
+    import time
+    coordinator.sources.update(nws_alert_zone="NYZ080",alert_entity="sensor.stale_alerts")
+    coordinator.hass.states.async_set("sensor.stale_alerts",0)
+    coordinator.nws_seen=time.time()
+    assert coordinator.storm()==(False,"Automatic advice")
+    coordinator.nws_alerts=["High Wind Warning"]
+    assert coordinator.storm()[0]
+    coordinator.nws_seen=0
+    assert coordinator.storm()==(True,"Automatic advice: alerts stale, reserve held")

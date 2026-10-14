@@ -1,5 +1,6 @@
 """UI setup with native entity selectors; no broker passwords stored here."""
 import voluptuous as vol
+import re
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
@@ -32,6 +33,7 @@ def source_schema(current):
     fields[vol.Optional("bms_control_entities",default=current.get("bms_control_entities",[]))] = selector.EntitySelector(selector.EntitySelectorConfig(filter=[{"domain":d} for d in ("number","select","switch","button")],multiple=True))
     fields[vol.Optional("battery_heartbeat_topic",default=current.get("battery_heartbeat_topic",""))]=str
     fields[vol.Optional("load_heartbeat_topic",default=current.get("load_heartbeat_topic",""))]=str
+    fields[vol.Optional("nws_alert_zone",default=current.get("nws_alert_zone",""))]=str
     return vol.Schema(fields)
 
 
@@ -51,6 +53,8 @@ def validate_sources(hass,data):
     for key in ("battery_heartbeat_topic","load_heartbeat_topic"):
         if any(c in data.get(key,"") for c in ("+","#","\0")):
             errors[key]="invalid_topic"
+    if data.get("nws_alert_zone") and not re.fullmatch(r"[A-Z]{2}[CZ]\d{3}",data["nws_alert_zone"]):
+        errors["nws_alert_zone"]="invalid_zone"
     return errors
 
 

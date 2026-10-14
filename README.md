@@ -16,7 +16,7 @@ Local Home Assistant energy management for a critical-load battery system: reada
 - Automatic PSEG Long Island Rate 195 monthly supply lookup plus the verified 2026 delivery table, or manual three-period prices.
 - Forward-only estimated daily/monthly/yearly net savings; battery charge/discharge energy sensors suitable for the HA Energy dashboard.
 - Highest/lowest cell positions, cell spread, battery temperature, current, alarms and cumulative throughput.
-- Fresh weather/forecast advisory, manual storm override, and a link to official radar.
+- Fresh weather/forecast advisory, built-in NWS zone alerts with five-minute refresh and fifteen-minute expiry, manual storm override, and a link to official radar.
 - Persistent accounting, diagnostics, stable per-installation entity identities, and integration-owned configuration entities instead of dozens of helpers.
 
 ## Architecture and prerequisites
@@ -38,7 +38,8 @@ The verified hardware profile is DATOUBOSS/MFUZOP HPVINV09, firmware `0010.03 20
 4. Enter your bridge MQTT root (the prefix before `/status`, without wildcards).
 5. Select battery SOC, **live critical-load AC power in W/kW**, separate nonnegative charging/discharging DC power, and the alarm sensor. Add optional temperature, pack voltage, current, remaining Ah, cumulative kWh, ordered cell sensors, weather and severe-alert sources.
 6. Supply explicit live MQTT heartbeat topics for BMS and load measurements when readings can stay constant. For the included bridges, use `daly_bms/state/pack_voltage` and `YOUR_INVERTER_ROOT/telemetry/output_power`. Heartbeats must be repeated numeric/timestamp messages, not retained availability flags. Without a heartbeat, source timestamps must refresh within 90 seconds.
-7. The Home Battery sidebar panel appears automatically. Review assumptions in Backup plan and Advanced.
+7. Optionally enter your NWS forecast-zone/county code for built-in US severe alerts. This takes precedence over an external alert sensor and tracks actual successful fetches even when the count remains zero.
+8. The Home Battery sidebar panel appears automatically. Review assumptions in Backup plan and Advanced.
 
 For a manual install, copy `custom_components/home_battery` into `/config/custom_components/` and restart. HACS custom-repository installation does not imply inclusion in HACS's default catalog.
 

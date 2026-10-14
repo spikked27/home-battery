@@ -37,6 +37,7 @@ SENSORS={
  "scheduler_status":("Scheduler status",None,None,None),"alarms":("Battery alarms",None,None,None),
  "bridge_status":("Bridge status",None,None,None),"command_result":("Last command result",None,None,None),
  "inverter_status_code":("Raw inverter status code",None,None,None),
+ "weather_alert_count":("Active NWS alerts",None,None,None),
 }
 for key,name,unit,device in [
     ("grid_voltage","Inverter utility voltage","V","voltage"),("grid_frequency","Inverter utility frequency","Hz","frequency"),

@@ -54,6 +54,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.rate_month=None
         self.weather_forecast=[]
         self.forecast_time=0
+        self.nws_alerts=[]
+        self.nws_seen=0
+        self.nws_attempt=0
         self.stopped=False
         self.start_time=time.time()
 
@@ -169,13 +172,19 @@ class BatteryCoordinator(DataUpdateCoordinator):
         if self.settings["weather_policy"]!="Automatic advice": return False,"Manual reserve"
         alert=self.hass.states.get(self.sources.get("alert_entity",""))
         warning=False
-        if alert and time.time()-getattr(alert,"last_reported",alert.last_updated).timestamp()<900:
+        zone=self.sources.get("nws_alert_zone")
+        if zone:
+            if time.time()-self.nws_seen>=900:
+                return True,"Automatic advice: alerts stale, reserve held"
+            text=" ".join(self.nws_alerts).lower()
+            warning=any(x in text for x in ("tornado","hurricane","tropical storm","ice storm","blizzard","high wind","severe thunderstorm","winter storm","flash flood"))
+        elif alert and time.time()-getattr(alert,"last_reported",alert.last_updated).timestamp()<900:
             text=str(alert.attributes.get("alerts",alert.attributes.get("events",alert.state))).lower()
             warning=any(x in text for x in ("tornado warning","hurricane","tropical storm","ice storm","blizzard","high wind warning","severe thunderstorm"))
         weather=self.hass.states.get(self.sources.get("weather_entity",""))
-        configured=bool(self.sources.get("weather_entity") or self.sources.get("alert_entity"))
+        configured=bool(self.sources.get("weather_entity") or self.sources.get("alert_entity") or zone)
         stale_weather=bool(self.sources.get("weather_entity") and (not weather or time.time()-getattr(weather,"last_reported",weather.last_updated).timestamp()>=3600))
-        stale_alert=bool(self.sources.get("alert_entity") and (not alert or time.time()-getattr(alert,"last_reported",alert.last_updated).timestamp()>=900))
+        stale_alert=bool(not zone and self.sources.get("alert_entity") and (not alert or time.time()-getattr(alert,"last_reported",alert.last_updated).timestamp()>=900))
         if configured and (stale_weather or stale_alert):
             return True,"Automatic advice: weather stale, reserve held"
         if weather and time.time()-getattr(weather,"last_reported",weather.last_updated).timestamp()<3600:
@@ -186,7 +195,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 speed=numeric(row.get("wind_speed"));gust=numeric(row.get("wind_gust_speed"))
                 warning |= row.get("condition") in {"lightning","lightning-rainy","exceptional"}
                 warning |= bool(factor and ((speed is not None and speed*factor>=self.settings["storm_wind_mph"]) or (gust is not None and gust*factor>=self.settings["storm_gust_mph"])))
-        return warning,"Automatic advice" if weather or alert else "Automatic advice: no weather source"
+        return warning,"Automatic advice" if weather or alert or zone else "Automatic advice: no weather source"
 
     def prices(self,now):
         if self.settings["price_source"]=="Manual prices":
@@ -195,6 +204,18 @@ class BatteryCoordinator(DataUpdateCoordinator):
         return pseg_rates(now,self.supply)
 
     async def fetch_context(self,now):
+        zone=self.sources.get("nws_alert_zone")
+        if zone and time.time()-self.nws_attempt>=300:
+            self.nws_attempt=time.time()
+            try:
+                async with asyncio.timeout(15):
+                    async with async_get_clientsession(self.hass).get("https://api.weather.gov/alerts/active/zone/"+zone,headers={"User-Agent":"HomeBattery/1.0 (https://github.com/spikked27/home-battery)"}) as response:
+                        response.raise_for_status();payload=await response.json()
+                if not isinstance(payload.get("features"),list): raise ValueError("Invalid NWS response")
+                self.nws_alerts=[str(item.get("properties",{}).get("event","Unknown alert")) for item in payload["features"]]
+                self.nws_seen=time.time()
+            except Exception as err:
+                LOGGER.warning("NWS alerts unavailable: %s",type(err).__name__)
         if self.settings["price_source"]=="PSEG Rate 195" and time.time()-getattr(self,"last_attempt",0)>21600:
             self.last_attempt=time.time()
             try:
@@ -238,6 +259,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
             totals=self.ledger["periods"].get(key,{})
             data[f"savings_{kind}"]=totals.get("avoided",0)-totals.get("charging",0)-totals.get("wear",0)
         data["integrated_energy_in"]=self.ledger["energy_in"];data["integrated_energy_out"]=self.ledger["energy_out"]
+        data["weather_alert_count"]=len(self.nws_alerts) if self.sources.get("nws_alert_zone") and time.time()-self.nws_seen<900 else None
+        self.attributes["weather_alert_count"]={"events":self.nws_alerts,"last_successful_fetch":self.nws_seen,"source":"National Weather Service"}
         self.attributes["plan"]=asdict(plan)|{"automatic_switching":self.settings["automatic_enabled"],"assumed_capacity_kwh":self.settings["capacity_kwh"]}
         self.attributes["current_price"]={"source_url":PSEG_URL,"month":self.rate_month,"last_fetch":self.last_fetch,"delivery_year":2026,"account_adjustments_included":False}
         self.attributes["highest_cell"]={"positions":extreme["highest_positions"] if extreme else [],"ordering":"Selected source list, left to right"}
