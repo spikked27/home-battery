@@ -42,6 +42,39 @@ async def test_source_units_are_validated(hass):
     assert validate_sources(hass,{"load_entity":"sensor.kw"})=={}
 
 
+async def test_discovery_preserves_renames_and_numeric_cell_order(hass):
+    from custom_components.home_battery.discovery import suggested_sources
+    entries={str(i):SimpleNamespace(platform="mqtt",disabled_by=None,device_id="battery",unique_id=unique,entity_id=entity)
+        for i,(unique,entity) in enumerate([("daly_bms_soc","sensor.renamed_soc"),("daly_bms_cell_10_voltage","sensor.group_ten"),("daly_bms_cell_2_voltage","sensor.group_two"),("daly_bms_cell_1_voltage","sensor.group_one")])}
+    with patch("custom_components.home_battery.discovery.er.async_get",return_value=SimpleNamespace(entities=entries)):
+        found=suggested_sources(hass)
+    assert found["soc_entity"]=="sensor.renamed_soc"
+    assert found["cell_entities"]==["sensor.group_one","sensor.group_two","sensor.group_ten"]
+
+
+async def test_discovery_does_not_pick_between_multiple_batteries(hass):
+    from custom_components.home_battery.discovery import suggested_sources
+    entries={key:SimpleNamespace(platform="mqtt",disabled_by=None,device_id=key,unique_id="daly_bms_soc",entity_id="sensor."+key) for key in ("one","two")}
+    with patch("custom_components.home_battery.discovery.er.async_get",return_value=SimpleNamespace(entities=entries)):
+        assert "soc_entity" not in suggested_sources(hass)
+
+
+async def test_mqtt_root_detected_without_publish_and_listener_removed(hass):
+    from custom_components.home_battery.discovery import detected_root
+    from unittest.mock import Mock
+    unsubscribe=Mock()
+    async def subscribe(_hass,topic,callback):
+        assert topic=="homeassistant/sensor/hpvinv09/telemetry_output_power/config"
+        callback(SimpleNamespace(payload='{"state_topic":"test/inverter/telemetry/output_power"}'))
+        return unsubscribe
+    with (patch("custom_components.home_battery.discovery.mqtt.is_connected",return_value=True),
+          patch("custom_components.home_battery.discovery.mqtt.async_subscribe",side_effect=subscribe),
+          patch("custom_components.home_battery.discovery.mqtt.async_publish") as publish):
+        assert await detected_root(hass)=="test/inverter"
+    unsubscribe.assert_called_once()
+    publish.assert_not_called()
+
+
 async def test_retained_telemetry_cannot_establish_freshness(coordinator):
     coordinator.received.clear()
     coordinator._message(message("status",{"status":"ready"},True))

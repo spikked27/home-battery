@@ -16,3 +16,10 @@ assert(!flow({...base,inverter_pv_power:0,grid_voltage:0}).includes('route charg
 assert(!flow({...base,inverter_pv_power:500}).includes('route batactive'),'Charging battery is not depicted supplying loads');
 assert(flow({...base,charge_w:0,discharge_w:600}).includes('route batactive'),'Measured battery discharge activates the load arrow');
 console.log('6 native power-flow rendering checks passed');
+const now=Date.now();
+const graph=Panel.prototype.trendGraph.call({historyHours:24,trends:{spread:[{t:now-3000,v:.1},{t:now-2000,v:null},{t:now-1000,v:.2},{t:now,v:.2}]}},'spread','Cell difference trend','mV','#fbbf24',1000);
+assert(graph.includes('200 mV'),'Cell difference is converted from volts into millivolts');
+assert.equal((graph.match(/<g fill="none"[^>]*>(.*?)<\/g>/)[1].match(/<path /g)||[]).length,1,'Unavailable interval must break the plotted series');
+const missing=Panel.prototype.trendGraph.call({trends:{}},'load','Critical-load usage','W','#a78bfa');
+assert(missing.includes('Waiting for recorded history'),'Empty history explains what is missing');
+console.log('3 history rendering checks passed');

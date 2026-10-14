@@ -5,6 +5,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 from .const import DOMAIN
+from .discovery import suggested_sources, detected_root
 
 
 def connection_schema(current):
@@ -62,9 +63,15 @@ class HomeBatteryFlow(config_entries.ConfigFlow,domain=DOMAIN):
     VERSION=1
     def __init__(self):
         self.connection={}
+        self.suggestions={}
+        self.root_checked=False
 
     async def async_step_user(self,user_input=None):
         errors={}
+        if not self.root_checked:
+            self.suggestions=suggested_sources(self.hass)
+            self.detected=await detected_root(self.hass)
+            self.root_checked=True
         if user_input:
             root=user_input["mqtt_root"].strip("/")
             if not root or any(c in root for c in ("+","#","\0")):
@@ -74,13 +81,16 @@ class HomeBatteryFlow(config_entries.ConfigFlow,domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 self.connection=dict(user_input,mqtt_root=root)
                 return await self.async_step_sources()
-        return self.async_show_form(step_id="user",data_schema=connection_schema(user_input or {}),errors=errors)
+        return self.async_show_form(step_id="user",data_schema=connection_schema(user_input or ({"mqtt_root":self.detected} if self.detected else {})),errors=errors)
 
     async def async_step_sources(self,user_input=None):
         errors=validate_sources(self.hass,user_input) if user_input else {}
         if user_input is not None and not errors:
             return self.async_create_entry(title=self.connection["name"],data=self.connection|user_input)
-        return self.async_show_form(step_id="sources",data_schema=source_schema(user_input or {}),errors=errors)
+        defaults=dict(self.suggestions)
+        if self.connection.get("mqtt_root"):
+            defaults["load_heartbeat_topic"]=self.connection["mqtt_root"]+"/telemetry/output_power"
+        return self.async_show_form(step_id="sources",data_schema=source_schema(user_input or defaults),errors=errors)
 
     @staticmethod
     @callback

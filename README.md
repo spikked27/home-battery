@@ -1,5 +1,7 @@
 # Home Battery
 
+<img src="https://raw.githubusercontent.com/spikked27/home-battery/main/custom_components/home_battery/brand/logo.png" width="112" alt="Home Battery logo">
+
 Local Home Assistant energy management for a critical-load battery system: readable controls, outage reserve, weather readiness, time-of-use scheduling and estimated net savings.
 
 [![Tests](https://github.com/spikked27/home-battery/actions/workflows/tests.yml/badge.svg)](https://github.com/spikked27/home-battery/actions/workflows/tests.yml)
@@ -16,6 +18,7 @@ Local Home Assistant energy management for a critical-load battery system: reada
 - Automatic PSEG Long Island Rate 195 monthly supply lookup plus the verified 2026 delivery table, or manual three-period prices.
 - Forward-only estimated daily/monthly/yearly net savings; battery charge/discharge energy sensors suitable for the HA Energy dashboard.
 - Highest/lowest cell positions, cell spread, battery temperature, current, alarms and cumulative throughput.
+- Critical-load usage and cell-difference history, with 24-hour / 7-day / 30-day windows and existing bridge history where available.
 - Fresh weather/forecast advisory, built-in NWS zone alerts with five-minute refresh and fifteen-minute expiry, manual storm override, and a link to official radar.
 - Persistent accounting, diagnostics, stable per-installation entity identities, and integration-owned configuration entities instead of dozens of helpers.
 
@@ -35,11 +38,13 @@ The verified hardware profile is DATOUBOSS/MFUZOP HPVINV09, firmware `0010.03 20
 1. In HACS → menu → Custom repositories, add `https://github.com/spikked27/home-battery`, category **Integration**.
 2. Download Home Battery and restart Home Assistant.
 3. Settings → Devices & services → Add integration → **Home Battery**.
-4. Enter your bridge MQTT root (the prefix before `/status`, without wildcards).
-5. Select battery SOC, **live critical-load AC power in W/kW**, separate nonnegative charging/discharging DC power, and the alarm sensor. Add optional temperature, pack voltage, current, remaining Ah, cumulative kWh, ordered cell sensors, weather and severe-alert sources.
+4. Review your detected bridge MQTT root (the prefix before `/status`, without wildcards), or enter it if the known retained discovery record is unavailable.
+5. Review suggested Daly BMS and inverter sources. Detection uses stable MQTT unique IDs, so renamed entities still work; cells are sorted numerically in physical group order. A single weather entity is also suggested. Multiple/unknown devices stay unselected. Confirm the **live critical-load AC power meter in W/kW** measures your intended loads; the default detected inverter output can be replaced by your panel meter. Optional missing sources stay blank.
 6. Supply explicit live MQTT heartbeat topics for BMS and load measurements when readings can stay constant. For the included bridges, use `daly_bms/state/pack_voltage` and `YOUR_INVERTER_ROOT/telemetry/output_power`. Heartbeats must be repeated numeric/timestamp messages, not retained availability flags. Without a heartbeat, source timestamps must refresh within 90 seconds.
 7. Optionally enter your NWS forecast-zone/county code for built-in US severe alerts. This takes precedence over an external alert sensor and tracks actual successful fetches even when the count remains zero.
 8. The Home Battery sidebar panel appears automatically. Review assumptions in Backup plan and Advanced.
+
+Requires Home Assistant 2026.3 or newer for bundled integration/HACS brand assets. Source detection does not install bridges or guess usable battery capacity, alert location, or meter commissioning. Review capacity, backup needs and commissioning before enabling scheduling. Custom MQTT discovery prefixes fall back to manual root entry.
 
 For a manual install, copy `custom_components/home_battery` into `/config/custom_components/` and restart. HACS custom-repository installation does not imply inclusion in HACS's default catalog.
 
@@ -50,6 +55,8 @@ Scheduling starts **disabled**. Observe the recommendations first. Confirm that 
 Only source preference is automatically changed. BMS thresholds, MOSFETs, charge current, timers, and output settings are never changed by the scheduler. Manual controls pause scheduling for the configured hold. Failed/uncertain commands latch a fault and stop automatic writes until deliberately acknowledged with a ready bridge.
 
 After reaching the reserve floor, the planner requires recovery to five SOC points above that floor (capped at the charge target) before returning from SUB to SBU. This hysteresis and the five-minute cooldown avoid rapid switching near the reserve boundary.
+
+**Backup hours and percentage floor work together:** the planner estimates DC energy for the requested hours using observed load, efficiency, inverter overhead and margin. It keeps the larger of that percentage and the Advanced minimum reserve. A storm can raise it further. For example, a 2-hour estimate of 12% with a 20% floor keeps 20%; an estimate of 35% keeps 35%. Reported SOC and configured capacity are assumptions, so runtime is an estimate.
 
 **Charge target is advisory:** a neutral grid-without-charging state is not verified for this firmware. Reaching the target keeps SUB; it does not promise that charging stops at that SOC. Hardware/BMS charge limits still determine termination. This is an energy-management system, not a protective controller; HA downtime suspends scheduling and leaves the inverter's current setting in place.
 

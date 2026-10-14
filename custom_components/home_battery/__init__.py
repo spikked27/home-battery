@@ -7,11 +7,14 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.exceptions import HomeAssistantError
 from .const import DEFAULTS, DOMAIN, PLATFORMS, VERSION
 from .coordinator import BatteryCoordinator
+from .discovery import suggested_sources
 
 
 async def async_setup(hass,config):
     hass.data.setdefault(DOMAIN,{})
-    await hass.http.async_register_static_paths([StaticPathConfig(f"/{DOMAIN}/frontend.js",str(Path(__file__).parent/"frontend.js"),False)])
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(f"/{DOMAIN}/frontend.js",str(Path(__file__).parent/"frontend.js"),False),
+        StaticPathConfig(f"/{DOMAIN}/brand",str(Path(__file__).parent/"brand"),True)])
     websocket_api.async_register_command(hass,panel_state)
     return True
 
@@ -25,10 +28,18 @@ async def panel_state(hass,connection,msg):
     registry=er.async_get(hass)
     entities={entry.unique_id.removeprefix(coordinator.entry.entry_id+"_"):entry.entity_id
               for entry in er.async_entries_for_config_entry(registry,coordinator.entry.entry_id)}
+    suggested=suggested_sources(hass)
+    history_sources={"load":coordinator.sources.get("load_entity"),"current":coordinator.sources.get("current_entity") or entities.get("current"),"spread":entities.get("cell_spread")}
+    if coordinator.sources.get("cell_entities") and coordinator.sources.get("cell_entities")==suggested.get("cell_entities"):
+        soc=registry.async_get(suggested.get("soc_entity",""))
+        if soc:
+            candidates=[e.entity_id for e in registry.entities.values() if e.device_id==soc.device_id and e.unique_id=="daly_bms_cell_delta" and not e.disabled_by]
+            if len(candidates)==1: history_sources["spread"]=candidates[0]
     connection.send_result(msg["id"],{"data":coordinator.data,"attributes":coordinator.attributes,
                                     "settings":coordinator.settings,"entities":entities,
-                                    "sources":{k:v for k,v in coordinator.sources.items() if k.endswith("_entity") or k=="bms_control_entities"},
-                                    "forecast":coordinator.weather_forecast,"version":VERSION})
+                                    "sources":{k:v for k,v in coordinator.sources.items() if k.endswith("_entity") or k in {"bms_control_entities","nws_alert_zone"}},
+                                    "history_sources":history_sources,"alerts":coordinator.nws_alert_details,
+                                    "forecast":coordinator.weather_forecast,"forecast_updated":coordinator.forecast_time,"version":VERSION})
 
 
 async def async_setup_entry(hass,entry):

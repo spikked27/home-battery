@@ -55,6 +55,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.weather_forecast=[]
         self.forecast_time=0
         self.nws_alerts=[]
+        self.nws_alert_details=[]
         self.nws_seen=0
         self.nws_attempt=0
         self.stopped=False
@@ -227,6 +228,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                         response.raise_for_status();payload=await response.json()
                 if not isinstance(payload.get("features"),list): raise ValueError("Invalid NWS response")
                 self.nws_alerts=[str(item.get("properties",{}).get("event","Unknown alert")) for item in payload["features"]]
+                self.nws_alert_details=[{key:item.get("properties",{}).get(key) for key in ("event","headline","severity","onset","expires","description","instruction")} for item in payload["features"]]
                 self.nws_seen=time.time()
             except Exception as err:
                 LOGGER.warning("NWS alerts unavailable: %s",type(err).__name__)
