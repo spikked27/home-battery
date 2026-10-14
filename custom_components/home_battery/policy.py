@@ -37,6 +37,12 @@ def tariff_window(now, charge_start=22, charge_end=6, peak_start=15, peak_end=19
     return "Off-peak"
 
 
+def price_window(now,settings):
+    """Changing desired charging hours must not change the utility's prices."""
+    if settings["price_source"]=="PSEG Rate 195": return tariff_window(now)
+    return tariff_window(now,settings["charge_start"],settings["charge_end"],settings["peak_start"],settings["peak_end"])
+
+
 def pseg_rates(now, supply):
     """Published 2026 delivery + monthly supply; not account-specific bill prices."""
     if now.year != 2026 or numeric(supply) is None or not 0 < supply < 1:
@@ -82,8 +88,11 @@ def make_plan(now, data, settings, rates, storm=False):
         return Plan("Keep ready","Storm reserve or backup-first preference", "SUB",reserve,runtime)
     if soc <= reserve:
         return Plan("Recharge","Battery is at or below the outage reserve", "SUB",reserve,runtime)
-    window = tariff_window(now,settings["charge_start"],settings["charge_end"],settings["peak_start"],settings["peak_end"])
-    if window == "Super off-peak":
+    window = price_window(now,settings)
+    hour=now.hour+now.minute/60
+    start,end=settings["charge_start"],settings["charge_end"]
+    charging_hours=(start<=hour<end if start<end else hour>=start or hour<end)
+    if charging_hours:
         return Plan("Charge" if soc < settings["charge_target"] else "Target reached",
                     "Low-price charge window" if soc < settings["charge_target"] else "Charging target reached; neutral grid mode is not established",
                     "SUB",reserve,runtime)
@@ -93,8 +102,9 @@ def make_plan(now, data, settings, rates, storm=False):
     if margin <= settings["minimum_margin"]:
         return Plan("Hold reserve","Charging losses and idle consumption outweigh the price difference","SUB",reserve,runtime,margin)
     # Preserve enough energy to reach today's next peak before discretionary off-peak discharge.
-    if window == "Off-peak" and now.weekday() < 5 and now.date() not in federal_holidays(now.year) and now.hour < settings["peak_start"]:
-        peak_hours = settings["peak_end"]-settings["peak_start"]
+    peak_start,peak_end=(15,19) if settings["price_source"]=="PSEG Rate 195" else (settings["peak_start"],settings["peak_end"])
+    if window == "Off-peak" and now.weekday() < 5 and now.date() not in federal_holidays(now.year) and now.hour < peak_start:
+        peak_hours = peak_end-peak_start
         needed = reserve + peak_hours*demand/1000/capacity*100
         if soc <= needed:
             return Plan("Save for peak","Keep remaining energy for the upcoming peak window","SUB",reserve,runtime,margin)

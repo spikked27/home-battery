@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import time
+from zoneinfo import ZoneInfo
 
 from homeassistant.components import mqtt
 from homeassistant.core import callback
@@ -18,7 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULTS, DOMAIN, PSEG_URL
-from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, tariff_window
+from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window
 
 LOGGER=logging.getLogger(__name__)
 
@@ -203,9 +204,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 self.weather_forecast=[]
 
     def recompute(self):
-        now=dt_util.now();d=self.measurements();storm,weather_mode=self.storm();rates=self.prices(now)
+        now=self.local_now();d=self.measurements();storm,weather_mode=self.storm();rates=self.prices(now)
         plan=make_plan(now,d,self.settings,rates,storm)
-        period=tariff_window(now,self.settings["charge_start"],self.settings["charge_end"],self.settings["peak_start"],self.settings["peak_end"])
+        period=price_window(now,self.settings)
         extreme=cell_extremes(d["cells"])
         data=dict(d,**(extreme or {}),plan=plan.decision,reason=plan.reason,reserve_soc=plan.reserve_soc,
                   runtime_hours=plan.runtime_hours,economic_margin=plan.economic_margin,
@@ -230,7 +231,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
 
     async def async_tick(self,_now=None):
         if self.stopped: return
-        now=dt_util.now()
+        now=self.local_now()
         await self.fetch_context(now)
         d,plan,rates,period=self.recompute()
         tick=time.time()
@@ -266,6 +267,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
 
     def save(self):
         self.store.async_delay_save(lambda:{"ledger":self.ledger,"hold_until":self.hold_until,"command_error":self.command_error},5)
+
+    def local_now(self):
+        now=dt_util.now()
+        return now.astimezone(ZoneInfo("America/New_York")) if self.settings["price_source"]=="PSEG Rate 195" else now
 
     async def async_setting(self,key,value):
         if key=="automatic_enabled" and value and not (self.settings["commissioned"] and self.settings["switching_confirmed"]):

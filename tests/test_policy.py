@@ -42,6 +42,9 @@ class PolicyTests(unittest.TestCase):
     def test_midnight_window(self):
         for hour in (22,23,0,5):self.assertEqual(p.tariff_window(self.now.replace(hour=hour)),"Super off-peak")
         self.assertEqual(p.tariff_window(self.now.replace(hour=6)),"Off-peak")
+    def test_custom_charge_hours_do_not_reprice_pseg(self):
+        self.settings.update(charge_start=12,charge_end=14)
+        self.assertEqual(p.price_window(self.now.replace(hour=12),self.settings),"Off-peak")
     def test_federal_holiday_and_weekend(self):
         self.assertEqual(p.tariff_window(self.now.replace(month=11,day=26)),"Off-peak")
         self.assertEqual(p.tariff_window(self.now.replace(month=5,day=25)),"Off-peak")
