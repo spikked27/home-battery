@@ -58,6 +58,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.nws_seen=0
         self.nws_attempt=0
         self.stopped=False
+        self.refresh_handle=None
         self.start_time=time.time()
 
     async def async_start(self):
@@ -75,7 +76,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 def heartbeat(msg,source=key):
                     if not msg.retain and (numeric(msg.payload) is not None or dt_util.parse_datetime(msg.payload)):
                         self.source_seen[source]=time.time()
-                        self.recompute()
+                        self.queue_refresh()
                 self.entry.async_on_unload(await mqtt.async_subscribe(self.hass,self.sources[key],heartbeat,qos=0))
         self.entry.async_on_unload(async_track_time_interval(self.hass,self.async_tick,timedelta(seconds=30)))
         await self.async_tick()
@@ -106,7 +107,16 @@ class BatteryCoordinator(DataUpdateCoordinator):
                     self.pending.set_result(payload)
                 elif payload.get("status") not in {"pending"}:
                     self.pending.set_exception(HomeAssistantError(str(payload.get("error",payload.get("status")))))
-        self.recompute()
+        self.queue_refresh()
+
+    @callback
+    def queue_refresh(self):
+        """Coalesce a bridge publication burst into one coherent UI snapshot."""
+        if self.stopped or self.refresh_handle: return
+        def flush():
+            self.refresh_handle=None
+            if not self.stopped: self.recompute()
+        self.refresh_handle=self.hass.loop.call_later(1,flush)
 
     def fresh_topic(self,key,age=60):
         return 0<=time.time()-self.received.get(key,0)<age
@@ -374,5 +384,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
 
     async def async_close(self):
         self.stopped=True
+        if self.refresh_handle:
+            self.refresh_handle.cancel();self.refresh_handle=None
         if self.pending and not self.pending.done(): self.pending.cancel()
         await self.store.async_save({"ledger":self.ledger,"hold_until":self.hold_until,"command_error":self.command_error})

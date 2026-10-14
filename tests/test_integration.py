@@ -207,3 +207,13 @@ async def test_disconnected_mqtt_never_queues_commands(coordinator):
         with pytest.raises(HomeAssistantError,match="disconnected"):
             await coordinator.async_control("output_priority","SBU")
         publish.assert_not_called()
+
+
+async def test_mqtt_burst_queues_one_ui_refresh(coordinator):
+    with patch.object(coordinator,"recompute") as recompute:
+        coordinator._message(message("telemetry/grid_voltage","121"))
+        handle=coordinator.refresh_handle
+        coordinator._message(message("telemetry/output_power","501"))
+        assert coordinator.refresh_handle is handle
+        recompute.assert_not_called()
+        handle.cancel();coordinator.refresh_handle=None
