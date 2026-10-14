@@ -25,3 +25,6 @@ assert(missing.includes('Waiting for recorded history'),'Empty history explains 
 console.log('3 history rendering checks passed');
 assert.equal(vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../custom_components/home_battery/frontend.js'),'utf8')+"\nhistoryFactor('load','kW')",{HTMLElement:class{},customElements:{define:()=>{}}}),1000,'kW load source history must display as W');
 console.log('1 load-history unit conversion check passed');
+const reference=Panel.prototype.flow.call({model:{settings:{commissioned:false}}},{...base,charge_w:0,discharge_w:600});
+assert(reference.includes('Reference loads')&&!reference.includes('route batactive'),'Uncommissioned meter must not imply the inverter supplies those loads');
+console.log('1 reference-meter attribution check passed');

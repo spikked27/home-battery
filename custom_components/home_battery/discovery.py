@@ -3,6 +3,7 @@ import asyncio
 import json
 import re
 from homeassistant.components import mqtt
+from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
 DALY_FIELDS={"soc_entity":"soc","charge_power_entity":"battery_charging_power",
@@ -38,6 +39,7 @@ async def detected_root(hass):
     """Read one known retained HA discovery record; no serial access or publishing."""
     if not mqtt.is_connected(hass): return None
     future=hass.loop.create_future()
+    @callback
     def received(msg):
         try:
             data=json.loads(msg.payload)

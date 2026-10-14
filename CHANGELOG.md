@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+- Label uncommissioned load meters as reference loads and suppress unconfirmed load-supply arrows. Preserve the user's selected meter while distinguishing planning measurements from inverter output.
+- Run retained bridge discovery callbacks on the Home Assistant event loop.
+
 ## 1.1.0
 
 - Restore critical-load usage and cell-difference trends, with 24-hour, 7-day and 30-day history windows and existing bridge history.
