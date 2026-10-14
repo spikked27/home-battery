@@ -18,7 +18,7 @@ jobs:
       - name: Syntax and HA-backed tests
         run: |
           python -m compileall -q custom_components
-          pytest -q tests
+          python -m pytest -q tests
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
