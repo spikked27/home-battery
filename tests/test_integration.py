@@ -98,3 +98,38 @@ async def test_unconfigured_optional_sensors_are_none(coordinator):
     d=coordinator.measurements()
     assert d["temperature"] is None and d["cells"]==[]
     assert d["fresh"] and d["healthy"]
+
+
+async def test_nonzero_inverter_status_pauses_planning(coordinator):
+    coordinator.topics["raw_readings"]["HSTS"]["ascii"]="(61 L010000 000 1000\r"
+    assert not coordinator.measurements()["healthy"]
+    coordinator.recompute()
+    assert coordinator.data["plan"]=="Paused"
+
+
+async def test_stale_hsts_not_rejuvenated_by_new_raw_publication(coordinator):
+    coordinator.topics["raw_readings"]["HSTS"]["age_seconds"]=80
+    assert not coordinator.measurements()["fresh"]
+
+
+async def test_malformed_mqtt_json_ignored(coordinator):
+    before=dict(coordinator.topics)
+    coordinator._message(SimpleNamespace(topic="lab/inverter/status",payload="[]",retain=False))
+    assert coordinator.topics==before
+
+
+async def test_setup_unload_registers_panel_and_removes_runtime(hass,coordinator):
+    from custom_components.home_battery import async_setup_entry, async_unload_entry
+    hass.data[DOMAIN]={}
+    with (patch("custom_components.home_battery.coordinator.BatteryCoordinator.async_start",new_callable=AsyncMock),
+          patch.object(hass.config_entries,"async_forward_entry_setups",new_callable=AsyncMock) as forward,
+          patch("custom_components.home_battery.panel_custom.async_register_panel",new_callable=AsyncMock) as panel,
+          patch.object(hass.config_entries,"async_unload_platforms",new_callable=AsyncMock,return_value=True),
+          patch("custom_components.home_battery.frontend.async_remove_panel") as remove):
+        assert await async_setup_entry(hass,coordinator.entry)
+        assert coordinator.entry.entry_id in hass.data[DOMAIN]
+        assert panel.call_args.kwargs["webcomponent_name"]=="home-battery-panel"
+        assert len(forward.call_args.args[1])==6
+        assert await async_unload_entry(hass,coordinator.entry)
+        assert coordinator.entry.entry_id not in hass.data[DOMAIN]
+        remove.assert_called_once()

@@ -41,7 +41,7 @@ def validate_sources(hass,data):
         state = hass.states.get(data[key])
         if state is None or state.attributes.get("unit_of_measurement") not in expected or data[key].startswith(("sensor.home_battery_","sensor.critical_loads_")):
             errors[key]="invalid_source"
-    if data.get("charge_power_entity")==data.get("discharge_power_entity"):
+    if data.get("charge_power_entity") and data.get("charge_power_entity")==data.get("discharge_power_entity"):
         errors["discharge_power_entity"]="separate_directional_power"
     for entity in data.get("bms_control_entities",[]):
         if entity.split(".")[0] not in {"number","select","switch","button"} or "home_battery" in entity:
