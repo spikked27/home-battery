@@ -68,7 +68,7 @@ Program 02 is combined solar + grid **battery-side DC charging amps**; program 1
 
 PSEG's current-month supply price refreshes every six hours. The delivery table is verified for **2026**; automatic prices pause in a later year until the table is reviewed. Failed refreshes retain the last successful current-month price for at most 48 hours. Taxes, riders, discounts and alternate suppliers are not included. Fixed service charges are not avoidable by battery operation.
 
-Savings are estimated avoided AC purchase minus charging purchases, grid-mode idle consumption and optional wear. All DC charging is conservatively treated as grid-sourced while grid is available, so solar charging can overstate costs. Missing intervals and outages are excluded. Initial stored energy has unknown historical cost; pre-installation periods are not backfilled. Nominal/reported capacity is never called measured capacity.
+New financial accounting waits for critical-load meter commissioning; existing historical estimates are retained. Savings are estimated avoided AC purchase minus charging purchases, grid-mode idle consumption and optional wear. All DC charging is conservatively treated as grid-sourced while grid is available, so solar charging can overstate costs. Missing intervals and outages are excluded. Initial stored energy has unknown historical cost; pre-installation periods are not backfilled. Nominal/reported capacity is never called measured capacity.
 
 ## Energy dashboard
 

@@ -115,6 +115,8 @@ def make_plan(now, data, settings, rates, storm=False):
 
 def money_rates(data, settings, price):
     """Cash-flow estimate. DC idle drain never becomes avoided AC consumption."""
+    if settings.get("commissioned") is False:
+        return None
     if price is None or not data.get("fresh") or not data.get("healthy"):
         return None
     if any(numeric(data.get(k)) is None for k in ("load_w","charge_w","discharge_w","grid_voltage")):

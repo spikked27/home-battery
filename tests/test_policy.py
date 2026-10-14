@@ -16,6 +16,7 @@ p=load("policy");c=load("const")
 class PolicyTests(unittest.TestCase):
     def setUp(self):
         self.settings=dict(c.DEFAULTS)
+        self.settings["commissioned"]=True
         self.d={"soc":80.,"load_w":500.,"charge_w":0.,"discharge_w":600.,"grid_voltage":120.,"fresh":True,"healthy":True,"mode":"Battery"}
         self.now=datetime(2026,10,14,16,tzinfo=ZoneInfo("America/New_York"))
         self.rates=p.pseg_rates(self.now,.1392)
@@ -64,6 +65,9 @@ class PolicyTests(unittest.TestCase):
     def test_outage_not_bill_savings(self):
         self.d["grid_voltage"]=0;self.assertEqual(p.money_rates(self.d,self.settings,.2)["avoided"],0)
     def test_missing_prices_pause_money(self):self.assertIsNone(p.money_rates(self.d,self.settings,None))
+    def test_reference_meter_cannot_earn_savings(self):
+        self.settings["commissioned"]=False
+        self.assertIsNone(p.money_rates(self.d,self.settings,.2))
     def test_charging_conversion(self):
         self.d.update(mode="Line",charge_w=900.)
         self.assertAlmostEqual(p.money_rates(self.d,self.settings,.2)["charging"],.209)

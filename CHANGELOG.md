@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+
+- Pause new financial accounting until the critical-load meter is commissioned. Planning and measured energy history remain available; existing historical estimates are retained.
+
 ## 1.1.1
 
 - Label uncommissioned load meters as reference loads and suppress unconfirmed load-supply arrows. Preserve the user's selected meter while distinguishing planning measurements from inverter output.
