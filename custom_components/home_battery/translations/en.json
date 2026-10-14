@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Connect your local battery system",
-        "description": "Uses the configured Home Assistant MQTT connection. No serial ports are opened. Scheduling starts disabled.",
+        "description": "Your known inverter bridge MQTT root is suggested when its discovery record is available. Review it before continuing. Uses your existing MQTT connection; no serial ports are opened. Scheduling starts disabled.",
         "data": {
           "name": "System name",
           "mqtt_root": "Verified inverter bridge MQTT root"
@@ -12,7 +12,7 @@
       },
       "sources": {
         "title": "Select measurements",
-        "description": "Select live AC load power, not kWh or battery/DC power. Cell sensor order determines group numbering. Optional BMS sources remain available from their original integration.",
+        "description": "Known Daly and inverter bridge sensors are suggested automatically, even after renaming. Review the selected critical-load meter and cell/group order. Multiple or unknown devices need selection. Replacing the meter clears its old heartbeat; use a heartbeat from the new meter or its fresh timestamps. Capacity and backup needs are reviewed in the dashboard.",
         "data": {
           "soc_entity": "Battery state of charge (%)",
           "load_entity": "Critical-load AC real power (W/kW)",

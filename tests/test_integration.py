@@ -75,6 +75,23 @@ async def test_mqtt_root_detected_without_publish_and_listener_removed(hass):
     publish.assert_not_called()
 
 
+async def test_first_time_flow_prefills_bridge_and_battery_sources(hass):
+    from homeassistant.data_entry_flow import FlowResultType
+    suggested={"soc_entity":"sensor.renamed_soc","load_entity":"sensor.panel_meter","cell_entities":["sensor.group_one","sensor.group_two"]}
+    with (patch("custom_components.home_battery.config_flow.detected_root",new_callable=AsyncMock,return_value="test/inverter"),
+          patch("custom_components.home_battery.config_flow.suggested_sources",return_value=suggested)):
+        result=await hass.config_entries.flow.async_init(DOMAIN,context={"source":"user"})
+        assert result["type"]==FlowResultType.FORM
+        defaults={key.schema:key.default() for key in result["data_schema"].schema}
+        assert defaults["mqtt_root"]=="test/inverter"
+        result=await hass.config_entries.flow.async_configure(result["flow_id"],{"name":"Test battery","mqtt_root":"test/inverter"})
+        assert result["step_id"]=="sources"
+        defaults={key.schema:key.default() for key in result["data_schema"].schema if key.default is not __import__('voluptuous').UNDEFINED}
+        assert defaults["soc_entity"]=="sensor.renamed_soc"
+        assert defaults["cell_entities"]==["sensor.group_one","sensor.group_two"]
+        assert defaults["load_heartbeat_topic"]=="test/inverter/telemetry/output_power"
+
+
 async def test_retained_telemetry_cannot_establish_freshness(coordinator):
     coordinator.received.clear()
     coordinator._message(message("status",{"status":"ready"},True))
