@@ -38,6 +38,16 @@ SENSORS={
  "bridge_status":("Bridge status",None,None,None),"command_result":("Last command result",None,None,None),
  "inverter_status_code":("Raw inverter status code",None,None,None),
 }
+for key,name,unit,device in [
+    ("grid_voltage","Inverter utility voltage","V","voltage"),("grid_frequency","Inverter utility frequency","Hz","frequency"),
+    ("output_voltage","Inverter output voltage","V","voltage"),("output_frequency","Inverter output frequency","Hz","frequency"),
+    ("output_apparent_power","Inverter output apparent power","VA","apparent_power"),("output_power","Inverter output real power","W","power"),
+    ("output_load","Inverter rated load","%",None),("battery_voltage","Inverter battery voltage","V","voltage"),
+    ("battery_soc","Inverter battery SOC","%","battery"),("battery_charge_current","Inverter battery charge current","A","current"),
+    ("battery_discharge_current","Inverter battery discharge current","A","current"),("pv_voltage","Solar array voltage","V","voltage"),
+    ("pv_current","Solar array current","A","current"),("pv_power","Solar array power","W","power"),
+    ("inverter_temperature","Inverter internal temperature","°C","temperature")]:
+    SENSORS["inverter_"+key]=(name,unit,device,"measurement")
 
 
 async def async_setup_entry(hass,entry,async_add_entities):

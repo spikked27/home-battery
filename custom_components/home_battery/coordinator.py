@@ -157,6 +157,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 cells.append(None)
             else: cells.append(numeric(state.state))
         d["cells"]=cells
+        for key in ("grid_voltage","grid_frequency","output_voltage","output_frequency","output_apparent_power","output_power","output_load","battery_voltage","battery_soc","battery_charge_current","battery_discharge_current","pv_voltage","pv_current","pv_power","inverter_temperature"):
+            topic="telemetry/"+key
+            d["inverter_"+key]=numeric(self.topics.get(topic)) if self.fresh_topic(topic) else None
         return d
 
     def storm(self):
