@@ -328,6 +328,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
 
     async def async_control(self,key,value,automatic=False):
         if self.stopped: raise HomeAssistantError("Integration is unloaded; commands are disabled")
+        if not mqtt.is_connected(self.hass): raise HomeAssistantError("MQTT is disconnected; no command was sent")
         from .select import CATALOG
         if key not in CATALOG: raise HomeAssistantError("Control outside verified registry")
         metadata=self.topics.get(f"control/{key}/attributes",{})

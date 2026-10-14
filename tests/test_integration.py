@@ -12,7 +12,8 @@ from custom_components.home_battery.const import DOMAIN
 
 
 @pytest.fixture
-def coordinator(hass):
+def coordinator(hass,monkeypatch):
+    monkeypatch.setattr("custom_components.home_battery.coordinator.mqtt.is_connected",lambda _hass:True)
     entry=MockConfigEntry(domain=DOMAIN,title="Test battery",unique_id="lab/inverter",data={
         "mqtt_root":"lab/inverter","soc_entity":"sensor.soc","load_entity":"sensor.load",
         "charge_power_entity":"sensor.charge","discharge_power_entity":"sensor.drain","alarms_entity":"sensor.alarms"})
@@ -198,3 +199,11 @@ async def test_fresh_nws_all_clear_does_not_expire_with_unchanged_entity(coordin
     assert coordinator.storm()[0]
     coordinator.nws_seen=0
     assert coordinator.storm()==(True,"Automatic advice: alerts stale, reserve held")
+
+
+async def test_disconnected_mqtt_never_queues_commands(coordinator):
+    with (patch("custom_components.home_battery.coordinator.mqtt.is_connected",return_value=False),
+          patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish):
+        with pytest.raises(HomeAssistantError,match="disconnected"):
+            await coordinator.async_control("output_priority","SBU")
+        publish.assert_not_called()
