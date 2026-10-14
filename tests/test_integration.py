@@ -133,3 +133,30 @@ async def test_setup_unload_registers_panel_and_removes_runtime(hass,coordinator
         assert await async_unload_entry(hass,coordinator.entry)
         assert coordinator.entry.entry_id not in hass.data[DOMAIN]
         remove.assert_called_once()
+
+
+async def test_configuration_entities_use_enum_categories(coordinator):
+    from homeassistant.const import EntityCategory
+    from custom_components.home_battery.number import BatteryNumber
+    from custom_components.home_battery.select import BatterySelect,InverterSelect
+    from custom_components.home_battery.switch import BatterySwitch
+    from custom_components.home_battery.sensor import BatterySensor
+    entities=[BatteryNumber(coordinator,"backup_hours","Backup",1,10,1,"h"),
+              BatterySelect(coordinator,"planning_goal","Priority"),
+              InverterSelect(coordinator,"output_priority","Source"),
+              BatterySwitch(coordinator,"automatic_enabled","Automatic"),
+              BatterySensor(coordinator,"bridge_status","Bridge",None,None,None)]
+    for entity in entities:
+        assert isinstance(entity.entity_category,EntityCategory)
+        assert entity.entity_category.value in {"config","diagnostic"}
+
+
+async def test_live_heartbeat_keeps_unchanged_zero_valid(coordinator):
+    import time
+    old=time.time()
+    coordinator.sources["battery_heartbeat_topic"]="bms/state/voltage"
+    coordinator.source_seen["battery_heartbeat_topic"]=old+200
+    with patch("custom_components.home_battery.coordinator.time.time",return_value=old+200):
+        assert coordinator.entity_number("charge_power_entity",{"W"})==0
+        coordinator.source_seen.clear()
+        assert coordinator.entity_number("charge_power_entity",{"W"}) is None

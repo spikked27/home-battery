@@ -52,7 +52,7 @@ async def async_setup_entry(hass,entry):
 async def async_options_updated(hass,entry):
     coordinator=hass.data[DOMAIN][entry.entry_id]
     # Entity edits apply live; source selection changes require a clean listener/ledger boundary.
-    changed=any(coordinator.sources.get(k)!=v for k,v in entry.options.items() if k.endswith("_entity") or k in {"cell_entities","bms_control_entities"})
+    changed=any(coordinator.sources.get(k)!=v for k,v in entry.options.items() if k.endswith("_entity") or k in {"cell_entities","bms_control_entities","battery_heartbeat_topic","load_heartbeat_topic"})
     if changed:
         await hass.config_entries.async_reload(entry.entry_id)
     else:

@@ -28,7 +28,9 @@
           "alert_entity": "Severe weather alerts",
           "weather_entity": "Local weather and hourly forecast",
           "cell_entities": "Cell/group voltages in physical group order",
-          "bms_control_entities": "Existing verified BMS controls (optional advanced panel)"
+          "bms_control_entities": "Existing verified BMS controls (optional advanced panel)",
+          "battery_heartbeat_topic": "BMS live numeric/timestamp MQTT topic (recommended)",
+          "load_heartbeat_topic": "Load meter live numeric/timestamp MQTT topic (recommended)"
         }
       }
     },
@@ -61,7 +63,9 @@
           "alert_entity": "Severe weather alerts",
           "weather_entity": "Local weather and hourly forecast",
           "cell_entities": "Cell/group voltages in physical group order",
-          "bms_control_entities": "Existing verified BMS controls (optional advanced panel)"
+          "bms_control_entities": "Existing verified BMS controls (optional advanced panel)",
+          "battery_heartbeat_topic": "BMS live numeric/timestamp MQTT topic (recommended)",
+          "load_heartbeat_topic": "Load meter live numeric/timestamp MQTT topic (recommended)"
         }
       }
     },

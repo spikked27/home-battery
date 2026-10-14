@@ -37,7 +37,8 @@ The verified hardware profile is DATOUBOSS/MFUZOP HPVINV09, firmware `0010.03 20
 3. Settings → Devices & services → Add integration → **Home Battery**.
 4. Enter your bridge MQTT root (the prefix before `/status`, without wildcards).
 5. Select battery SOC, **live critical-load AC power in W/kW**, separate nonnegative charging/discharging DC power, and the alarm sensor. Add optional temperature, pack voltage, current, remaining Ah, cumulative kWh, ordered cell sensors, weather and severe-alert sources.
-6. The Home Battery sidebar panel appears automatically. Review assumptions in Backup plan and Advanced.
+6. Supply explicit live MQTT heartbeat topics for BMS and load measurements when readings can stay constant. For the included bridges, use `daly_bms/state/pack_voltage` and `YOUR_INVERTER_ROOT/telemetry/output_power`. Heartbeats must be repeated numeric/timestamp messages, not retained availability flags. Without a heartbeat, source timestamps must refresh within 90 seconds.
+7. The Home Battery sidebar panel appears automatically. Review assumptions in Backup plan and Advanced.
 
 For a manual install, copy `custom_components/home_battery` into `/config/custom_components/` and restart. HACS custom-repository installation does not imply inclusion in HACS's default catalog.
 

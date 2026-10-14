@@ -30,6 +30,8 @@ def source_schema(current):
     fields[vol.Optional("weather_entity",default=current.get("weather_entity",vol.UNDEFINED))] = selector.EntitySelector(selector.EntitySelectorConfig(domain="weather"))
     fields[vol.Optional("cell_entities",default=current.get("cell_entities",[]))] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor",device_class="voltage",multiple=True))
     fields[vol.Optional("bms_control_entities",default=current.get("bms_control_entities",[]))] = selector.EntitySelector(selector.EntitySelectorConfig(filter=[{"domain":d} for d in ("number","select","switch","button")],multiple=True))
+    fields[vol.Optional("battery_heartbeat_topic",default=current.get("battery_heartbeat_topic",""))]=str
+    fields[vol.Optional("load_heartbeat_topic",default=current.get("load_heartbeat_topic",""))]=str
     return vol.Schema(fields)
 
 
@@ -46,6 +48,9 @@ def validate_sources(hass,data):
     for entity in data.get("bms_control_entities",[]):
         if entity.split(".")[0] not in {"number","select","switch","button"} or "home_battery" in entity:
             errors["bms_control_entities"]="invalid_source"
+    for key in ("battery_heartbeat_topic","load_heartbeat_topic"):
+        if any(c in data.get(key,"") for c in ("+","#","\0")):
+            errors[key]="invalid_topic"
     return errors
 
 

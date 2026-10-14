@@ -1,5 +1,6 @@
 """Planning preferences belong to the integration rather than scattered helpers."""
 from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN, NUMBERS
 from .entity import BatteryEntity
@@ -9,7 +10,7 @@ async def async_setup_entry(hass,entry,async_add_entities):
     async_add_entities(BatteryNumber(coordinator,key,*value) for key,value in NUMBERS.items())
 
 class BatteryNumber(BatteryEntity,NumberEntity):
-    _attr_entity_category="config"
+    _attr_entity_category=EntityCategory.CONFIG
     _attr_mode=NumberMode.BOX
     def __init__(self,coordinator,key,name,minimum,maximum,step,unit):
         super().__init__(coordinator,key,name)

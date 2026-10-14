@@ -1,5 +1,6 @@
 """Explicit commissioning, automation enablement and storm override."""
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.const import EntityCategory
 from .const import DOMAIN, SWITCHES
 from .entity import BatteryEntity
 
@@ -7,7 +8,7 @@ async def async_setup_entry(hass,entry,async_add_entities):
     async_add_entities(BatterySwitch(hass.data[DOMAIN][entry.entry_id],key,name) for key,name in SWITCHES.items())
 
 class BatterySwitch(BatteryEntity,SwitchEntity):
-    _attr_entity_category="config"
+    _attr_entity_category=EntityCategory.CONFIG
     @property
     def is_on(self): return bool(self.coordinator.settings[self.key])
     async def async_turn_on(self,**kwargs): await self.coordinator.async_setting(self.key,True)

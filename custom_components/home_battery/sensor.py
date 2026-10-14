@@ -1,5 +1,6 @@
 """Measurements, monetary statistics and honest confidence metadata."""
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import EntityCategory
 from .const import DOMAIN
 from .entity import BatteryEntity
 
@@ -49,7 +50,7 @@ class BatterySensor(BatteryEntity,SensorEntity):
         self._attr_native_unit_of_measurement=unit
         self._attr_device_class=device_class
         self._attr_state_class=state_class
-        if key in {"bridge_status","command_result","price_status"}: self._attr_entity_category="diagnostic"
+        if key in {"bridge_status","command_result","price_status"}: self._attr_entity_category=EntityCategory.DIAGNOSTIC
         if unit: self._attr_suggested_display_precision=3 if device_class=="voltage" and "cell" in key else 2
 
     @property

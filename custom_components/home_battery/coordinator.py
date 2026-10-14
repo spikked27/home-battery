@@ -34,6 +34,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.attributes={}
         self.topics={}
         self.received={}
+        self.source_seen={}
         self.lock=asyncio.Lock()
         self.pending=None
         self.pending_key=None
@@ -65,6 +66,13 @@ class BatteryCoordinator(DataUpdateCoordinator):
             raise HomeAssistantError("Configure the Home Assistant MQTT integration first")
         unsub=await mqtt.async_subscribe(self.hass,self.sources["mqtt_root"]+"/#",self._message,qos=0)
         self.entry.async_on_unload(unsub)
+        for key in ("battery_heartbeat_topic","load_heartbeat_topic"):
+            if self.sources.get(key):
+                def heartbeat(msg,source=key):
+                    if not msg.retain and (numeric(msg.payload) is not None or dt_util.parse_datetime(msg.payload)):
+                        self.source_seen[source]=time.time()
+                        self.recompute()
+                self.entry.async_on_unload(await mqtt.async_subscribe(self.hass,self.sources[key],heartbeat,qos=0))
         self.entry.async_on_unload(async_track_time_interval(self.hass,self.async_tick,timedelta(seconds=30)))
         await self.async_tick()
 
@@ -103,7 +111,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
         state=self.hass.states.get(self.sources.get(key,""))
         if not state or state.state in {"unknown","unavailable"}: return None
         stamp=getattr(state,"last_reported",state.last_updated)
-        if time.time()-stamp.timestamp()>self.settings["freshness_seconds"]: return None
+        heartbeat="load_heartbeat_topic" if key=="load_entity" else "battery_heartbeat_topic"
+        age=time.time()-self.source_seen.get(heartbeat,0) if self.sources.get(heartbeat) else time.time()-stamp.timestamp()
+        if not 0<=age<self.settings["freshness_seconds"]: return None
         unit=state.attributes.get("unit_of_measurement")
         if units and unit not in units: return None
         value=numeric(state.state)
@@ -127,7 +137,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         d["grid_voltage"]=numeric(self.topics.get("telemetry/grid_voltage")) if self.fresh_topic("telemetry/grid_voltage") else None
         alarms=self.hass.states.get(self.sources.get("alarms_entity",""))
         d["alarms"]=alarms.state if alarms else "unavailable"
-        alarm_fresh=alarms and time.time()-getattr(alarms,"last_reported",alarms.last_updated).timestamp()<self.settings["freshness_seconds"]
+        alarm_age=time.time()-self.source_seen.get("battery_heartbeat_topic",0) if self.sources.get("battery_heartbeat_topic") else time.time()-getattr(alarms,"last_reported",alarms.last_updated).timestamp() if alarms else 999
+        alarm_fresh=alarms and 0<=alarm_age<self.settings["freshness_seconds"]
         status=self.topics.get("status",{})
         d["healthy"]=bool(alarm_fresh and d["alarms"].lower() in {"no alarms","none","ok","0","off"}
                           and isinstance(status,dict) and status.get("status") in {"ready","write_in_progress"}
@@ -141,7 +152,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         cells=[]
         for entity in self.sources.get("cell_entities",[]):
             state=self.hass.states.get(entity)
-            if not state or state.attributes.get("unit_of_measurement")!="V" or time.time()-getattr(state,"last_reported",state.last_updated).timestamp()>self.settings["freshness_seconds"]:
+            age=time.time()-self.source_seen.get("battery_heartbeat_topic",0) if self.sources.get("battery_heartbeat_topic") else time.time()-getattr(state,"last_reported",state.last_updated).timestamp() if state else 999
+            if not state or state.attributes.get("unit_of_measurement")!="V" or not 0<=age<self.settings["freshness_seconds"]:
                 cells.append(None)
             else: cells.append(numeric(state.state))
         d["cells"]=cells

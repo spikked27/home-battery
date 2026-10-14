@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 from homeassistant.components.select import SelectEntity
+from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN, SELECTS
 from .entity import BatteryEntity
@@ -14,7 +15,7 @@ async def async_setup_entry(hass,entry,async_add_entities):
                        [InverterSelect(coordinator,key,meta["name"]) for key,meta in CATALOG.items()])
 
 class BatterySelect(BatteryEntity,SelectEntity):
-    _attr_entity_category="config"
+    _attr_entity_category=EntityCategory.CONFIG
     @property
     def options(self): return SELECTS[self.key]
     @property
@@ -24,7 +25,7 @@ class BatterySelect(BatteryEntity,SelectEntity):
         await self.coordinator.async_setting(self.key,option)
 
 class InverterSelect(BatteryEntity,SelectEntity):
-    _attr_entity_category="config"
+    _attr_entity_category=EntityCategory.CONFIG
     @property
     def options(self):
         value=self.coordinator.topics.get(f"control/{self.key}/attributes",{}).get("allowed_values",[])
