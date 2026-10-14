@@ -160,3 +160,29 @@ async def test_live_heartbeat_keeps_unchanged_zero_valid(coordinator):
         assert coordinator.entity_number("charge_power_entity",{"W"})==0
         coordinator.source_seen.clear()
         assert coordinator.entity_number("charge_power_entity",{"W"}) is None
+
+
+async def test_unloaded_integration_cannot_transmit(coordinator):
+    coordinator.stopped=True
+    with patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish:
+        with pytest.raises(HomeAssistantError,match="unloaded"):
+            await coordinator.async_control("output_priority","SBU")
+        publish.assert_not_called()
+
+
+async def test_cash_and_energy_accounting_exclude_stale_gaps(coordinator):
+    import time
+    clock=time.time()
+    coordinator.settings.update(price_source="Manual prices",manual_super_rate=.1,manual_off_rate=.2,manual_peak_rate=.3)
+    with patch.object(coordinator,"fetch_context",new_callable=AsyncMock):
+        with patch("custom_components.home_battery.coordinator.time.time",return_value=clock):
+            await coordinator.async_tick()
+        with patch("custom_components.home_battery.coordinator.time.time",return_value=clock+30):
+            await coordinator.async_tick()
+        assert coordinator.ledger["avoided"]>0
+        assert coordinator.ledger["energy_out"]==pytest.approx(.005)
+        before=coordinator.ledger["avoided"]
+        with patch("custom_components.home_battery.coordinator.time.time",return_value=clock+300):
+            await coordinator.async_tick()
+        assert coordinator.ledger["avoided"]==before
+        assert coordinator.ledger["energy_out"]==pytest.approx(.005)

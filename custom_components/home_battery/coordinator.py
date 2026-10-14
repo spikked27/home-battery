@@ -36,6 +36,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.received={}
         self.source_seen={}
         self.lock=asyncio.Lock()
+        self.tick_lock=asyncio.Lock()
         self.pending=None
         self.pending_key=None
         self.pending_value=None
@@ -245,9 +246,15 @@ class BatteryCoordinator(DataUpdateCoordinator):
         return d,plan,rates,period
 
     async def async_tick(self,_now=None):
+        if self.tick_lock.locked() or self.stopped: return
+        async with self.tick_lock:
+            await self._async_tick(_now)
+
+    async def _async_tick(self,_now=None):
         if self.stopped: return
         now=self.local_now()
         await self.fetch_context(now)
+        if self.stopped: return
         d,plan,rates,period=self.recompute()
         tick=time.time()
         current=money_rates(d,self.settings,rates[period] if rates else None)
@@ -296,6 +303,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.recompute()
 
     async def async_control(self,key,value,automatic=False):
+        if self.stopped: raise HomeAssistantError("Integration is unloaded; commands are disabled")
         from .select import CATALOG
         if key not in CATALOG: raise HomeAssistantError("Control outside verified registry")
         metadata=self.topics.get(f"control/{key}/attributes",{})

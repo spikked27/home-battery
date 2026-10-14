@@ -36,7 +36,7 @@ class HomeBatteryPanel extends HTMLElement {
     const x=t=>40+Math.max(0,Math.min(1,(t-start)/(end-start)))*720,y=v=>115-v/max*85;
     const paths=[];
     for(let i=1;i<rows.length;i++){
-      const a=rows[i-1],b=rows[i];if(a.v===null||b.v===null||!Number.isFinite(a.v)||!Number.isFinite(b.v)||false)continue;
+      const a=rows[i-1],b=rows[i];if(a.v===null||b.v===null||!Number.isFinite(a.v)||!Number.isFinite(b.v))continue;
       const color=v=>v>=0?'#2dd4bf':'#fbbf24';
       if(a.v*b.v<0){const t=a.t+(b.t-a.t)*Math.abs(a.v)/(Math.abs(a.v)+Math.abs(b.v));paths.push(`<path d="M${x(a.t)} ${y(a.v)}L${x(t)} 115" stroke="${color(a.v)}"/><path d="M${x(t)} 115L${x(b.t)} ${y(b.v)}" stroke="${color(b.v)}"/>`);}
       else paths.push(`<path d="M${x(a.t)} ${y(a.v)}L${x(b.t)} ${y(b.v)}" stroke="${color(b.v)}"/>`);
