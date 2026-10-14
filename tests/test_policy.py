@@ -39,6 +39,11 @@ class PolicyTests(unittest.TestCase):
     def test_storm_prefers_grid(self):
         plan=p.make_plan(self.now,self.d,self.settings,self.rates,True)
         self.assertEqual(plan.desired_priority,"SUB");self.assertGreaterEqual(plan.reserve_soc,90)
+    def test_reserve_recovery_avoids_chattering(self):
+        self.d.update(priority="SUB",soc=22)
+        self.assertEqual(self.plan().decision,"Recover reserve")
+        self.d["soc"]=26
+        self.assertEqual(self.plan().desired_priority,"SBU")
     def test_midnight_window(self):
         for hour in (22,23,0,5):self.assertEqual(p.tariff_window(self.now.replace(hour=hour)),"Super off-peak")
         self.assertEqual(p.tariff_window(self.now.replace(hour=6)),"Off-peak")

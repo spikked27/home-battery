@@ -134,6 +134,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         mode=raw.get("HSTS",{}).get("ascii","") if isinstance(raw,dict) else ""
         tokens=mode.lstrip("(").split()
         d["mode"]={"L":"Line","B":"Battery"}.get(tokens[1][0] if len(tokens)>1 and tokens[1] else "","Unknown")
+        d["priority"]=self.topics.get("control/output_priority/state")
         d["inverter_status_code"]=tokens[0] if tokens else "Unknown"
         d["grid_voltage"]=numeric(self.topics.get("telemetry/grid_voltage")) if self.fresh_topic("telemetry/grid_voltage") else None
         alarms=self.hass.states.get(self.sources.get("alarms_entity",""))
@@ -229,7 +230,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                   tariff=period,weather_mode=weather_mode,storm=storm,current_price=rates[period] if rates else None,
                   overnight_price=rates["Super off-peak"] if rates else None,
                   price_status="Manual prices" if self.settings["price_source"]=="Manual prices" else "Published PSEG estimate" if rates else "Rates unavailable / review needed",
-                  scheduler_status="Fault latched" if self.command_error else "Manual hold" if time.time()<self.hold_until else "Automatic" if self.settings["automatic_enabled"] else "Observe only",
+                  scheduler_status="Fault latched" if self.command_error else "Observe only" if not self.settings["automatic_enabled"] else "Manual hold" if time.time()<self.hold_until else "Automatic",
                   command_result=self.command_error or self.topics.get("last_result",{}).get("status","No command"),
                   bridge_status=self.topics.get("status",{}).get("status","unavailable"))
         data["estimated_savings_total"]=self.ledger["avoided"]-self.ledger["charging"]-self.ledger["wear"]

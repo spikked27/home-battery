@@ -88,6 +88,8 @@ def make_plan(now, data, settings, rates, storm=False):
         return Plan("Keep ready","Storm reserve or backup-first preference", "SUB",reserve,runtime)
     if soc <= reserve:
         return Plan("Recharge","Battery is at or below the outage reserve", "SUB",reserve,runtime)
+    if data.get("priority")=="SUB" and soc<min(settings["charge_target"],reserve+5):
+        return Plan("Recover reserve","Recover five SOC points above reserve before returning to battery", "SUB",reserve,runtime)
     window = price_window(now,settings)
     hour=now.hour+now.minute/60
     start,end=settings["charge_start"],settings["charge_end"]

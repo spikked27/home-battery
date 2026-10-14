@@ -16,6 +16,6 @@ Given configured MQTT root `R`:
 
 Status/raw/grid messages must be emitted periodically. Retained messages can populate display/configuration but cannot establish live telemetry or confirm a write. Commands must be single-flight, have a finite timeout, perform readback, and never replay retained requests.
 
-The v1 adapter targets the previously developed HPVINV09 bridge contract, not arbitrary Voltronic firmware. The complete user-visible catalog is `custom_components/home_battery/catalog.json`. Existing Daly telemetry/control integrations remain independent and can supply source entities.
+The v1 adapter targets the previously developed HPVINV09 bridge contract, not arbitrary Voltronic firmware. The complete user-visible catalog is `custom_components/home_battery/catalog.json`. Existing Daly telemetry/control integrations remain independent and can supply source entities. The companion [daly-ha-bridge](https://github.com/spikked27/daly-ha-bridge) is one provider; other HA BMS integrations can also supply the selected measurements. Confirm that your installed bridge version provides the required sensors and telemetry expiry/heartbeat behavior.
 
 No MQTT broker credentials are duplicated in Home Battery. It uses Home Assistant's configured broker connection.

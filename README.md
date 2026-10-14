@@ -48,6 +48,8 @@ Scheduling starts **disabled**. Observe the recommendations first. Confirm that 
 
 Only source preference is automatically changed. BMS thresholds, MOSFETs, charge current, timers, and output settings are never changed by the scheduler. Manual controls pause scheduling for the configured hold. Failed/uncertain commands latch a fault and stop automatic writes until deliberately acknowledged with a ready bridge.
 
+After reaching the reserve floor, the planner requires recovery to five SOC points above that floor (capped at the charge target) before returning from SUB to SBU. This hysteresis and the five-minute cooldown avoid rapid switching near the reserve boundary.
+
 **Charge target is advisory:** a neutral grid-without-charging state is not verified for this firmware. Reaching the target keeps SUB; it does not promise that charging stops at that SOC. Hardware/BMS charge limits still determine termination. This is an energy-management system, not a protective controller; HA downtime suspends scheduling and leaves the inverter's current setting in place.
 
 ## Current limits are different quantities
