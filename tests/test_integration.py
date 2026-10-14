@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 import pytest
+import pytest_asyncio
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from homeassistant.exceptions import HomeAssistantError
 from custom_components.home_battery.coordinator import BatteryCoordinator
@@ -11,8 +12,8 @@ from custom_components.home_battery.config_flow import validate_sources
 from custom_components.home_battery.const import DOMAIN
 
 
-@pytest.fixture
-def coordinator(hass,monkeypatch):
+@pytest_asyncio.fixture
+async def coordinator(hass,monkeypatch):
     monkeypatch.setattr("custom_components.home_battery.coordinator.mqtt.is_connected",lambda _hass:True)
     entry=MockConfigEntry(domain=DOMAIN,title="Test battery",unique_id="lab/inverter",data={
         "mqtt_root":"lab/inverter","soc_entity":"sensor.soc","load_entity":"sensor.load",
@@ -26,7 +27,8 @@ def coordinator(hass,monkeypatch):
                           "control/output_priority/attributes":{"allowed_values":["SUB","SBU"]},"control/output_priority/state":"SUB"})
     import time
     result.received.update({key:time.time() for key in ("status","raw_readings","telemetry/grid_voltage")})
-    return result
+    yield result
+    await result.async_close()
 
 
 def message(key,payload,retain=False):
