@@ -23,3 +23,5 @@ assert.equal((graph.match(/<g fill="none"[^>]*>(.*?)<\/g>/)[1].match(/<path /g)|
 const missing=Panel.prototype.trendGraph.call({trends:{}},'load','Critical-load usage','W','#a78bfa');
 assert(missing.includes('Waiting for recorded history'),'Empty history explains what is missing');
 console.log('3 history rendering checks passed');
+assert.equal(vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../custom_components/home_battery/frontend.js'),'utf8')+"\nhistoryFactor('load','kW')",{HTMLElement:class{},customElements:{define:()=>{}}}),1000,'kW load source history must display as W');
+console.log('1 load-history unit conversion check passed');

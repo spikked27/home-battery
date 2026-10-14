@@ -86,6 +86,8 @@ class HomeBatteryFlow(config_entries.ConfigFlow,domain=DOMAIN):
     async def async_step_sources(self,user_input=None):
         errors=validate_sources(self.hass,user_input) if user_input else {}
         if user_input is not None and not errors:
+            if user_input.get("load_entity")!=self.suggestions.get("load_entity") and user_input.get("load_heartbeat_topic")==self.connection["mqtt_root"]+"/telemetry/output_power":
+                user_input=dict(user_input,load_heartbeat_topic="")
             return self.async_create_entry(title=self.connection["name"],data=self.connection|user_input)
         defaults=dict(self.suggestions)
         if self.connection.get("mqtt_root"):
@@ -103,5 +105,7 @@ class HomeBatteryOptions(config_entries.OptionsFlow):
         current=dict(self.config_entry.data)|dict(self.config_entry.options)
         errors=validate_sources(self.hass,user_input) if user_input else {}
         if user_input is not None and not errors:
+            if user_input.get("load_entity")!=current.get("load_entity") and user_input.get("load_heartbeat_topic")==current.get("load_heartbeat_topic"):
+                user_input=dict(user_input,load_heartbeat_topic="")
             return self.async_create_entry(title="",data=dict(self.config_entry.options)|user_input)
         return self.async_show_form(step_id="init",data_schema=source_schema(user_input or current),errors=errors)
