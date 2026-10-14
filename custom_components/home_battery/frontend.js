@@ -67,15 +67,16 @@ class HomeBatteryPanel extends HTMLElement {
     return '';
   }
   flow(d){
-    const bat=d.mode==='Battery'&&d.fresh,grid=d.mode==='Line'&&d.fresh;
+    const bat=d.mode==='Battery'&&d.fresh&&d.discharge_w>5,grid=d.mode==='Line'&&d.fresh&&d.grid_voltage>90;
+    const gridCharging=d.charge_w>5&&d.grid_voltage>90&&Number.isFinite(d.inverter_pv_power)&&d.inverter_pv_power<1;
     const node=(cls,title,value,caption,icon)=>`<article class="node ${cls}"><ha-icon icon="${icon}"></ha-icon><span>${title}</span><strong>${value}</strong><small>${caption}</small></article>`;
-    return `<div class="flow"><svg viewBox="0 0 600 270" preserveAspectRatio="none"><defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs><path class="route ${grid?'gridactive':''}" d="M190 55L420 55"/><path class="route ${bat?'batactive':''}" d="M390 205Q500 180 510 130"/><path class="route ${d.charge_w>5?'chargeactive':''}" d="M90 130Q100 190 210 205"/></svg>
+    return `<div class="flow"><svg viewBox="0 0 600 270" preserveAspectRatio="none"><defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs><path class="route ${grid?'gridactive':''}" d="M190 55L420 55"/><path class="route ${bat?'batactive':''}" d="M390 205Q500 180 510 130"/><path class="route ${gridCharging?'chargeactive':''}" d="M90 130Q100 190 210 205"/></svg>
       ${node('grid','Utility',d.grid_voltage>90?'Available':'Offline',fmt(d.grid_voltage,' V'),'mdi:transmission-tower')}
       ${node('loads','Critical loads',fmt(d.load_w,' W',0),'Selected AC meter','mdi:home-lightning-bolt-outline')}
       ${node('battery','Battery',fmt(d.soc,'%',1),d.charge_w>5?'Charging '+fmt(d.charge_w,' W',0):'Supplying '+fmt(d.discharge_w,' W',0),'mdi:home-battery-outline')}
       </div>`;
   }
-  overview(d){return `<section class="hero"><h2>${d.fresh?(d.mode==='Battery'?'Battery is powering your loads':'Grid is powering your loads'):'Waiting for fresh telemetry'}</h2>${this.flow(d)}<p class="muted">Blue: utility supply · green: charging · amber: battery supply. Battery readings include inverter consumption.</p></section>
+  overview(d){return `<section class="hero"><h2>${d.fresh?(d.mode==='Line'?'Grid is powering your loads':d.discharge_w>5?'Battery is powering your loads':d.inverter_pv_power>5?'Solar is supplying the inverter':'Inverter operating in battery mode'):'Waiting for fresh telemetry'}</h2>${this.flow(d)}<p class="muted">Blue: utility supply · green: charging · amber: battery supply. Battery readings include inverter consumption.</p></section>
     <div class="columns"><section><h2>Your backup</h2>${this.tile('Estimated outage runtime',fmt(d.runtime_hours,' h',1),'Based on reported SOC and assumed usable capacity')}${this.tile('Outage reserve',fmt(d.reserve_soc,'%',0),'Energy reserved before price-based battery use')}</section>
     <section><h2>What happens next</h2><article class="tile"><strong>${esc(d.plan)}</strong><p>${esc(d.reason)}</p><span class="pill">${esc(d.scheduler_status)}</span></article><div class="actions">${this.button('use_battery','Use battery now')}${this.button('use_grid','Use grid & charge')}</div></section>
     <section><h2>Weather & money</h2>${this.tile('Weather reserve',esc(d.weather_mode),d.storm?'Storm reserve advised':'Routine outlook')}${this.tile('Estimated savings today',fmt(d.savings_day,' USD',2),d.price_status)}</section></div>

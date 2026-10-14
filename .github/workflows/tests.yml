@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --check custom_components/home_battery/frontend.js
+      - run: node tests/frontend.test.cjs
   hacs:
     runs-on: ubuntu-latest
     steps:
