@@ -193,11 +193,15 @@ class BatteryCoordinator(DataUpdateCoordinator):
             warning=any(x in text for x in ("tornado warning","hurricane","tropical storm","ice storm","blizzard","high wind warning","severe thunderstorm"))
         weather=self.hass.states.get(self.sources.get("weather_entity",""))
         configured=bool(self.sources.get("weather_entity") or self.sources.get("alert_entity") or zone)
-        stale_weather=bool(self.sources.get("weather_entity") and (not weather or time.time()-getattr(weather,"last_reported",weather.last_updated).timestamp()>=3600))
+        forecast_current=any((stamp:=dt_util.parse_datetime(row.get("datetime",""))) and 0<=stamp.timestamp()-time.time()<=86400 for row in self.weather_forecast)
+        weather_fresh=bool(weather and weather.state not in {"unknown","unavailable"} and
+                           (time.time()-getattr(weather,"last_reported",weather.last_updated).timestamp()<3600 or
+                            (time.time()-self.forecast_time<3600 and forecast_current)))
+        stale_weather=bool(self.sources.get("weather_entity") and not weather_fresh)
         stale_alert=bool(not zone and self.sources.get("alert_entity") and (not alert or time.time()-getattr(alert,"last_reported",alert.last_updated).timestamp()>=900))
         if configured and (stale_weather or stale_alert):
             return True,"Automatic advice: weather stale, reserve held"
-        if weather and time.time()-getattr(weather,"last_reported",weather.last_updated).timestamp()<3600:
+        if weather_fresh:
             unit=weather.attributes.get("wind_speed_unit","km/h")
             factor={"mph":1,"km/h":.621371,"m/s":2.23694,"kn":1.15078}.get(unit)
             forecast=self.weather_forecast if time.time()-self.forecast_time<3600 else []
@@ -359,11 +363,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         if not self.fresh_topic("status") or self.topics.get("status",{}).get("status")!="ready" or self.command_error:
             raise HomeAssistantError("Bridge is not ready, or a command fault is latched")
         if self.lock.locked(): raise HomeAssistantError("Another command is awaiting verification")
-        if self.topics.get(f"control/{key}/state")==value:
-            if not automatic:
-                self.hold_until=time.time()+self.settings["manual_override_minutes"]*60
-                self.save();self.recompute()
-            return
+        if automatic and self.topics.get(f"control/{key}/state")==value: return
         async with self.lock:
             self.pending=self.hass.loop.create_future();self.pending_key=key;self.pending_value=value;self.command_time=time.time()
             try:

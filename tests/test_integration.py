@@ -217,3 +217,18 @@ async def test_mqtt_burst_queues_one_ui_refresh(coordinator):
         assert coordinator.refresh_handle is handle
         recompute.assert_not_called()
         handle.cancel();coordinator.refresh_handle=None
+
+
+async def test_manual_same_value_still_verified_by_bridge(coordinator):
+    coordinator.topics["control/output_priority/state"]="SBU"
+    async def publish(*args,**kwargs):
+        coordinator._message(message("last_result",{"control":"output_priority","status":"verified_no_change","timestamp":datetime.now(timezone.utc).isoformat()}))
+    with patch("custom_components.home_battery.coordinator.mqtt.async_publish",side_effect=publish) as publish:
+        await coordinator.async_control("output_priority","SBU")
+        publish.assert_called_once()
+
+
+async def test_unavailable_weather_is_not_an_all_clear(coordinator):
+    coordinator.sources["weather_entity"]="weather.failed"
+    coordinator.hass.states.async_set("weather.failed","unavailable")
+    assert coordinator.storm()==(True,"Automatic advice: weather stale, reserve held")
