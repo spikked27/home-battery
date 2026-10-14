@@ -21,6 +21,7 @@ class HomeBatteryPanel extends HTMLElement {
       const start=new Date(Date.now()-86400000).toISOString();
       const rows=await this._hass.callApi('GET',`history/period/${encodeURIComponent(start)}?filter_entity_id=${encodeURIComponent(entity)}&minimal_response&no_attributes`);
       this.currentHistory=(rows[0]||[]).map(r=>({t:new Date(r.last_changed).getTime(),v:['unknown','unavailable'].includes(r.state)?null:Number(r.state)}));
+      const live=this._hass.states[entity]?.state; if(live&&!['unknown','unavailable'].includes(live)&&Number.isFinite(Number(live)))this.currentHistory.push({t:Date.now(),v:Number(live)});
     }catch{this.currentHistory=[];}
     try{
       const id=this.model.entities.estimated_savings_total;
@@ -35,7 +36,7 @@ class HomeBatteryPanel extends HTMLElement {
     const x=t=>40+Math.max(0,Math.min(1,(t-start)/(end-start)))*720,y=v=>115-v/max*85;
     const paths=[];
     for(let i=1;i<rows.length;i++){
-      const a=rows[i-1],b=rows[i];if(a.v===null||b.v===null||!Number.isFinite(a.v)||!Number.isFinite(b.v)||b.t-a.t>180000)continue;
+      const a=rows[i-1],b=rows[i];if(a.v===null||b.v===null||!Number.isFinite(a.v)||!Number.isFinite(b.v)||false)continue;
       const color=v=>v>=0?'#2dd4bf':'#fbbf24';
       if(a.v*b.v<0){const t=a.t+(b.t-a.t)*Math.abs(a.v)/(Math.abs(a.v)+Math.abs(b.v));paths.push(`<path d="M${x(a.t)} ${y(a.v)}L${x(t)} 115" stroke="${color(a.v)}"/><path d="M${x(t)} 115L${x(b.t)} ${y(b.v)}" stroke="${color(b.v)}"/>`);}
       else paths.push(`<path d="M${x(a.t)} ${y(a.v)}L${x(b.t)} ${y(b.v)}" stroke="${color(b.v)}"/>`);
@@ -52,7 +53,7 @@ class HomeBatteryPanel extends HTMLElement {
     const entity=this.model.entities[key]||key;
     if(confirm&&!window.confirm('Apply this change to your battery system?'))return;
     try{await this._hass.callService(domain,service,{entity_id:entity,...data});this.error='';await this.refresh();}
-    catch(e){this.error=e.message||String(e);this.render();}
+    catch(e){this.error=e.message||String(e);this.shadowRoot.activeElement?.blur();this.render();}
   }
   tile(title,value,caption='',className=''){return `<article class="tile ${className}"><div class="label">${esc(title)}</div><strong>${value}</strong><small>${esc(caption)}</small></article>`;}
   button(key,title){return `<button class="action" data-button="${key}">${esc(title)}</button>`;}
