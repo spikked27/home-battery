@@ -1,0 +1,180 @@
+{
+  "output_priority": {
+    "name": "Preferred power source",
+    "manual_program": 1,
+    "description": "SUB: solar, then grid, then battery. SBU: solar, then battery, then grid. Switching to SUB started charging in this setup with SNU selected. Source preference does not independently enable or disable charging. Code 02 remains unidentified.",
+    "meaning_confidence": "Confirmed for SUB/SBU; code 02 unknown",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "charger_priority": {
+    "name": "Allowed charging sources",
+    "manual_program": 16,
+    "description": "SNU permits both solar and grid charging. Other stored codes can be selected but their label mapping on this firmware is unconfirmed. This differs from the source powering AC loads.",
+    "meaning_confidence": "Confirmed for SNU; other codes unknown",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "utility_charge_current": {
+    "name": "Grid-to-battery charge limit (DC)",
+    "manual_program": 11,
+    "description": "Maximum battery-side DC amps supplied by the grid charger. It counts toward the total charge limit in program 02. A lower total limit takes precedence. This is not AC amps drawn from the breaker.",
+    "meaning_confidence": "High confidence: exact-model manual",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior.",
+    "measurement_side": "Battery DC"
+  },
+  "total_charge_current": {
+    "name": "Total battery charge limit (DC)",
+    "manual_program": 2,
+    "description": "Maximum combined solar and grid charging current at the battery, in DC amps. This does not include AC load current or set emergency battery-output power. Both charge selectors retain the 30 A DC site ceiling.",
+    "meaning_confidence": "High confidence: exact-model manual",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior.",
+    "measurement_side": "Battery DC"
+  },
+  "back_to_grid_voltage": {
+    "name": "Use grid below battery voltage",
+    "manual_program": 12,
+    "description": "Low battery voltage threshold for transferring loads to available grid power in SBU mode. Battery/BMS mode can affect whether voltage or SOC thresholds apply.",
+    "meaning_confidence": "High confidence: manual; transfer behavior not commissioned",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "back_to_battery_voltage": {
+    "name": "Resume battery above voltage",
+    "manual_program": 13,
+    "description": "Recovery battery voltage threshold for returning loads to battery preference in SBU mode. This is not a charge-voltage target. BMS mode may change applicability.",
+    "meaning_confidence": "High confidence: manual; transfer behavior not commissioned",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "display_auto_return": {
+    "name": "Return panel to main screen",
+    "manual_program": 19,
+    "description": "Automatically return the inverter display to its main information screen.",
+    "meaning_confidence": "High confidence: manual and stored setting",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "backlight": {
+    "name": "Panel backlight",
+    "manual_program": 20,
+    "description": "Enable the inverter display backlight.",
+    "meaning_confidence": "High confidence: manual and stored setting",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "buzzer": {
+    "name": "Inverter alarm sound",
+    "manual_program": 18,
+    "description": "Enable the inverter audible alarm.",
+    "meaning_confidence": "High confidence: manual and stored setting",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "equalization_voltage": {
+    "name": "Equalization voltage (inactive)",
+    "manual_program": 31,
+    "description": "Stored lead-acid equalization voltage. Equalization is disabled in the current lithium/BMS profile; this is not the normal lithium charge voltage.",
+    "meaning_confidence": "High confidence: manual; inactive in current profile",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "equalization_duration": {
+    "name": "Equalization hold time (inactive)",
+    "manual_program": 33,
+    "description": "Stored lead-acid equalization duration in minutes; inactive in the current profile.",
+    "meaning_confidence": "High confidence: manual; inactive in current profile",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "equalization_timeout": {
+    "name": "Equalization time limit (inactive)",
+    "manual_program": 34,
+    "description": "Stored lead-acid equalization timeout in minutes; inactive in the current profile.",
+    "meaning_confidence": "High confidence: manual; inactive in current profile",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "equalization_interval": {
+    "name": "Equalization interval (inactive)",
+    "manual_program": 35,
+    "description": "Stored number of days between lead-acid equalization cycles; inactive in the current profile.",
+    "meaning_confidence": "High confidence: manual; inactive in current profile",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "bms_shutdown_soc": {
+    "name": "Stop battery use below SOC",
+    "manual_program": 38,
+    "description": "Low-SOC shutdown threshold using BMS-reported state of charge. The reported SOC is currently uncalibrated; this is not a validated backup-runtime reserve.",
+    "meaning_confidence": "High confidence: manual; shutdown behavior not commissioned",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "grid_current_parameter": {
+    "name": "Grid-tie current (effect unverified)",
+    "manual_program": 56,
+    "description": "The manual calls this GRID-tie current, in AC amps. The value can be stored and read back; its effect on this firmware has not been measured. Do not use it as a total AC supply or backup-output limit. The 32 A selector cap does not enforce a 32 A input budget.",
+    "meaning_confidence": "Moderate confidence: label established; physical effect unverified",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior.",
+    "measurement_side": "Grid-tie AC (manual label)"
+  },
+  "second_output_recovery_soc": {
+    "name": "Second output: restore above SOC",
+    "manual_program": 64,
+    "description": "BMS SOC threshold for restoring the second AC output. Its terminal behavior and interaction with other conditions have not been commissioned.",
+    "meaning_confidence": "High confidence: manual; physical behavior unverified",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "second_output_recovery_delay": {
+    "name": "Second output: restore delay",
+    "manual_program": 66,
+    "description": "Delay in minutes before restoring the second AC output. Exact timing and interactions remain unverified.",
+    "meaning_confidence": "High confidence: manual; physical behavior unverified",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "source_notification": {
+    "name": "Beep when primary source is lost",
+    "manual_program": 22,
+    "description": "Manual: alarm when the primary source is interrupted. This is an inverter beep, not a Home Assistant notification.",
+    "meaning_confidence": "High confidence: manual; trigger behavior unverified",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "overload_restart": {
+    "name": "Auto-restart after overload",
+    "manual_program": 6,
+    "description": "Permit automatic inverter restart after an overload shutdown. This does not change its output rating.",
+    "meaning_confidence": "High confidence: manual; fault recovery not commissioned",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "overtemperature_restart": {
+    "name": "Auto-restart after overheating",
+    "manual_program": 7,
+    "description": "Permit automatic inverter restart after an overtemperature shutdown and recovery.",
+    "meaning_confidence": "High confidence: manual; fault recovery not commissioned",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "bms_return_battery_soc": {
+    "name": "Resume battery above SOC",
+    "manual_program": 40,
+    "description": "BMS-reported SOC threshold for returning to battery preference. Its precedence over voltage thresholds in the current BMS profile remains unverified.",
+    "meaning_confidence": "High confidence: manual; transfer behavior not commissioned",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "bms_return_utility_soc": {
+    "name": "Use grid below battery SOC",
+    "manual_program": 39,
+    "description": "BMS-reported SOC threshold for transferring to available grid power. Its precedence over voltage thresholds in the current BMS profile remains unverified.",
+    "meaning_confidence": "High confidence: manual; transfer behavior not commissioned",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "second_output_discharge_duration": {
+    "name": "Second output: battery runtime limit",
+    "manual_program": 65,
+    "description": "Timer in minutes for second-output operation while discharging. Zero disables this timer. The exact start/reset conditions and terminal behavior remain unverified.",
+    "meaning_confidence": "High confidence: manual; timer behavior unverified",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "ac_input_range": {
+    "name": "Accepted grid-voltage range (code)",
+    "manual_program": 3,
+    "description": "The manual lists UPS (95-145 V) and APL (65-145 V) for this 120 V model. The remote code-to-label mapping has not been panel-confirmed, so numeric codes are preserved. This is not a current limit.",
+    "meaning_confidence": "High confidence for manual ranges; remote code mapping unknown",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  },
+  "bms_restart_soc": {
+    "name": "Minimum battery SOC for startup",
+    "manual_program": 41,
+    "description": "Manual: BMS SOC for startup. Whether this permits automatic restart or gates a manual start has not been established.",
+    "meaning_confidence": "Moderate confidence: startup meaning; exact behavior unverified",
+    "verification_scope": "Consult verified_values for tested stored values; readback alone does not verify physical behavior."
+  }
+}

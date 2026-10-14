@@ -1,0 +1,70 @@
+"""Real decisions and accounting boundaries, without energizing hardware."""
+import importlib.util
+from pathlib import Path
+import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import unittest
+
+ROOT=Path(__file__).parents[1]/"custom_components/home_battery"
+def load(name):
+    spec=importlib.util.spec_from_file_location(name,ROOT/(name+".py"))
+    module=importlib.util.module_from_spec(spec);sys.modules[name]=module;spec.loader.exec_module(module)
+    return module
+p=load("policy");c=load("const")
+
+class PolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.settings=dict(c.DEFAULTS)
+        self.d={"soc":80.,"load_w":500.,"charge_w":0.,"discharge_w":600.,"grid_voltage":120.,"fresh":True,"healthy":True,"mode":"Battery"}
+        self.now=datetime(2026,10,14,16,tzinfo=ZoneInfo("America/New_York"))
+        self.rates=p.pseg_rates(self.now,.1392)
+    def plan(self):return p.make_plan(self.now,self.d,self.settings,self.rates)
+    def test_prices(self):
+        self.assertEqual(self.rates,{"Super off-peak":.12852,"Off-peak":.2321,"Peak":.518057})
+        self.assertIsNone(p.pseg_rates(self.now.replace(year=2027),.1392))
+    def test_peak_economic_discharge(self):self.assertEqual(self.plan().desired_priority,"SBU")
+    def test_low_soc_recharge(self):
+        self.d["soc"]=10;self.assertEqual(self.plan().desired_priority,"SUB")
+    def test_stale_never_switches(self):
+        self.d["fresh"]=False;self.assertIsNone(self.plan().desired_priority)
+    def test_alarm_never_switches(self):
+        self.d["healthy"]=False;self.assertIsNone(self.plan().desired_priority)
+    def test_outage_no_command(self):
+        self.d["grid_voltage"]=0;self.assertEqual(self.plan().decision,"Outage");self.assertIsNone(self.plan().desired_priority)
+    def test_tiny_load_losses(self):
+        self.d.update(load_w=5.,discharge_w=73.);self.assertEqual(self.plan().desired_priority,"SUB")
+    def test_measured_drain_floor(self):
+        self.d["discharge_w"]=2000;self.assertGreater(self.plan().reserve_soc,70)
+    def test_storm_prefers_grid(self):
+        plan=p.make_plan(self.now,self.d,self.settings,self.rates,True)
+        self.assertEqual(plan.desired_priority,"SUB");self.assertGreaterEqual(plan.reserve_soc,90)
+    def test_midnight_window(self):
+        for hour in (22,23,0,5):self.assertEqual(p.tariff_window(self.now.replace(hour=hour)),"Super off-peak")
+        self.assertEqual(p.tariff_window(self.now.replace(hour=6)),"Off-peak")
+    def test_federal_holiday_and_weekend(self):
+        self.assertEqual(p.tariff_window(self.now.replace(month=11,day=26)),"Off-peak")
+        self.assertEqual(p.tariff_window(self.now.replace(month=5,day=25)),"Off-peak")
+        self.assertEqual(p.tariff_window(self.now.replace(day=17)),"Off-peak")
+    def test_preserve_next_peak(self):
+        self.now=self.now.replace(hour=12);self.d["soc"]=60
+        self.assertEqual(self.plan().decision,"Save for peak")
+    def test_dc_drain_not_credited_as_ac_delivery(self):
+        self.d.update(load_w=5.,discharge_w=73.)
+        money=p.money_rates(self.d,self.settings,.2)
+        self.assertAlmostEqual(money["avoided"],.001)
+    def test_outage_not_bill_savings(self):
+        self.d["grid_voltage"]=0;self.assertEqual(p.money_rates(self.d,self.settings,.2)["avoided"],0)
+    def test_missing_prices_pause_money(self):self.assertIsNone(p.money_rates(self.d,self.settings,None))
+    def test_charging_conversion(self):
+        self.d.update(mode="Line",charge_w=900.)
+        self.assertAlmostEqual(p.money_rates(self.d,self.settings,.2)["charging"],.209)
+    def test_cell_positions_and_ties(self):
+        result=p.cell_extremes([3.7,3.6,3.7])
+        self.assertEqual(result["highest_positions"],[1,3]);self.assertEqual(result["lowest_positions"],[2])
+    def test_invalid_cells(self):
+        for cells in ([None,3.7],[5,3.7],[]):self.assertIsNone(p.cell_extremes(cells))
+    def test_nonfinite_rejected(self):
+        self.d["soc"]=float('nan');self.assertIsNone(self.plan().desired_priority)
+
+if __name__=="__main__":unittest.main()

@@ -1,0 +1,74 @@
+{
+  "title": "Home Battery",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect your local battery system",
+        "description": "Uses the configured Home Assistant MQTT connection. No serial ports are opened. Scheduling starts disabled.",
+        "data": {
+          "name": "System name",
+          "mqtt_root": "Verified inverter bridge MQTT root"
+        }
+      },
+      "sources": {
+        "title": "Select measurements",
+        "description": "Select live AC load power, not kWh or battery/DC power. Cell sensor order determines group numbering. Optional BMS sources remain available from their original integration.",
+        "data": {
+          "soc_entity": "Battery state of charge (%)",
+          "load_entity": "Critical-load AC real power (W/kW)",
+          "charge_power_entity": "Battery charging DC power (nonnegative W/kW)",
+          "discharge_power_entity": "Battery discharging DC power (nonnegative W/kW)",
+          "voltage_entity": "Battery pack voltage (V)",
+          "current_entity": "Battery current (+ charging / \u2212 discharging, A)",
+          "temperature_entity": "Battery temperature",
+          "remaining_ah_entity": "BMS remaining capacity (Ah)",
+          "energy_in_entity": "Cumulative battery energy charged (Wh/kWh)",
+          "energy_out_entity": "Cumulative battery energy discharged (Wh/kWh)",
+          "alarms_entity": "BMS alarms (No alarms / none / OK / 0 when clear)",
+          "alert_entity": "Severe weather alerts",
+          "weather_entity": "Local weather and hourly forecast",
+          "cell_entities": "Cell/group voltages in physical group order",
+          "bms_control_entities": "Existing verified BMS controls (optional advanced panel)"
+        }
+      }
+    },
+    "error": {
+      "invalid_source": "Select an existing sensor with the indicated units; derived Home Battery sensors cannot be sources.",
+      "separate_directional_power": "Use separate nonnegative charging and discharging power sensors.",
+      "invalid_topic": "Enter a topic prefix without wildcards or null bytes."
+    },
+    "abort": {
+      "already_configured": "This MQTT bridge is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Measurement and weather sources",
+        "description": "Changing sources restarts accounting intervals; old history is never reassigned.",
+        "data": {
+          "soc_entity": "Battery state of charge (%)",
+          "load_entity": "Critical-load AC real power (W/kW)",
+          "charge_power_entity": "Battery charging DC power (nonnegative W/kW)",
+          "discharge_power_entity": "Battery discharging DC power (nonnegative W/kW)",
+          "voltage_entity": "Battery pack voltage (V)",
+          "current_entity": "Battery current (+ charging / \u2212 discharging, A)",
+          "temperature_entity": "Battery temperature",
+          "remaining_ah_entity": "BMS remaining capacity (Ah)",
+          "energy_in_entity": "Cumulative battery energy charged (Wh/kWh)",
+          "energy_out_entity": "Cumulative battery energy discharged (Wh/kWh)",
+          "alarms_entity": "BMS alarms (No alarms / none / OK / 0 when clear)",
+          "alert_entity": "Severe weather alerts",
+          "weather_entity": "Local weather and hourly forecast",
+          "cell_entities": "Cell/group voltages in physical group order",
+          "bms_control_entities": "Existing verified BMS controls (optional advanced panel)"
+        }
+      }
+    },
+    "error": {
+      "invalid_source": "Select an existing sensor with the indicated units; derived Home Battery sensors cannot be sources.",
+      "separate_directional_power": "Use separate nonnegative charging and discharging power sensors.",
+      "invalid_topic": "Enter a topic prefix without wildcards or null bytes."
+    }
+  }
+}
