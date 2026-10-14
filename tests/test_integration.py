@@ -77,14 +77,19 @@ async def test_mqtt_root_detected_without_publish_and_listener_removed(hass):
 
 async def test_first_time_flow_prefills_bridge_and_battery_sources(hass):
     from homeassistant.data_entry_flow import FlowResultType
+    from custom_components.home_battery.config_flow import HomeBatteryFlow
     suggested={"soc_entity":"sensor.renamed_soc","load_entity":"sensor.panel_meter","cell_entities":["sensor.group_one","sensor.group_two"]}
+    flow=HomeBatteryFlow()
+    flow.hass=hass
     with (patch("custom_components.home_battery.config_flow.detected_root",new_callable=AsyncMock,return_value="test/inverter"),
-          patch("custom_components.home_battery.config_flow.suggested_sources",return_value=suggested)):
-        result=await hass.config_entries.flow.async_init(DOMAIN,context={"source":"user"})
+          patch("custom_components.home_battery.config_flow.suggested_sources",return_value=suggested),
+          patch.object(flow,"async_set_unique_id",new_callable=AsyncMock),
+          patch.object(flow,"_abort_if_unique_id_configured")):
+        result=await flow.async_step_user()
         assert result["type"]==FlowResultType.FORM
         defaults={key.schema:key.default() for key in result["data_schema"].schema}
         assert defaults["mqtt_root"]=="test/inverter"
-        result=await hass.config_entries.flow.async_configure(result["flow_id"],{"name":"Test battery","mqtt_root":"test/inverter"})
+        result=await flow.async_step_user({"name":"Test battery","mqtt_root":"test/inverter"})
         assert result["step_id"]=="sources"
         defaults={key.schema:key.default() for key in result["data_schema"].schema if key.default is not __import__('voluptuous').UNDEFINED}
         assert defaults["soc_entity"]=="sensor.renamed_soc"
