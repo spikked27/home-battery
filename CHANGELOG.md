@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- Keep current battery percentage, outage reserve and runtime together on Overview and Backup.
+- Add reference-load daily/monthly/yearly savings projections from recorded hourly usage, current charging limits and reserve assumptions; switch the main display to a separate recorded-operation ledger after panel commissioning.
+- Restore an animated regional RainViewer radar with local Leaflet assets, visible attribution and data freshness.
+- Restore vertical cell bars on a common scale, selectable group values and an optional full-scale view.
+- Use thin time-weighted history lines, faint min/max ranges and a signed battery-current zero line. Compact navigation and weather summaries across screen sizes.
+- Changing the selected load meter clears commissioning and disables scheduling until the new source is confirmed.
+
 ## 1.1.2
 
 - Pause new financial accounting until the critical-load meter is commissioned. Planning and measured energy history remain available; existing historical estimates are retained.

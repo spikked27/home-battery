@@ -19,8 +19,18 @@ Local Home Assistant energy management for a critical-load battery system: reada
 - Forward-only estimated daily/monthly/yearly net savings; battery charge/discharge energy sensors suitable for the HA Energy dashboard.
 - Highest/lowest cell positions, cell spread, battery temperature, current, alarms and cumulative throughput.
 - Critical-load usage and cell-difference history, with 24-hour / 7-day / 30-day windows and existing bridge history where available.
-- Fresh weather/forecast advisory, built-in NWS zone alerts with five-minute refresh and fifteen-minute expiry, manual storm override, and a link to official radar.
+- Fresh weather/forecast advisory, built-in NWS zone alerts with five-minute refresh and fifteen-minute expiry, manual storm override, and animated regional RainViewer radar.
 - Persistent accounting, diagnostics, stable per-installation entity identities, and integration-owned configuration entities instead of dozens of helpers.
+
+## Projections and recorded savings
+
+Before panel commissioning, Savings models a repeated 24-hour reference-load profile from HA Recorder hourly mean power. It requires all 24 hours and fresh telemetry. Charging is limited by the current inverter settings and assumes grid charging whenever SUB is selected, including reserve recovery outside cheap hours. Capacity, efficiency, idle use, reserve and model charge target are assumptions. Monthly and annual values are run rates at current prices, not forecasts or measured savings. Negative values mean the model costs more than buying the load directly from the grid.
+
+After selecting and commissioning the connected critical-load meter, the main display switches to recorded operation with estimated tariff costs. This separate ledger starts prospectively; reference projections and legacy estimates are excluded. Changing the meter disables scheduling and clears its commissioning. Physical panel connection is not automatically detected.
+
+Weather includes regional radar from RainViewer and OpenStreetMap, rendered with bundled Leaflet 1.9.4. Map tiles require internet and include provider attribution. The center uses HA location rounded to a tenth of a degree, with no home marker. Radar is informational; official alert freshness and the configured weather policy govern reserve advice. Provider availability is not guaranteed.
+
+Charts use thin time-weighted mean lines with faint min/max ranges; missing intervals stay blank. Cell bars share one labelled voltage scale, with a full-scale toggle to distinguish small differences from their absolute magnitude.
 
 ## Architecture and prerequisites
 

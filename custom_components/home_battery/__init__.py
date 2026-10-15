@@ -14,7 +14,9 @@ async def async_setup(hass,config):
     hass.data.setdefault(DOMAIN,{})
     await hass.http.async_register_static_paths([
         StaticPathConfig(f"/{DOMAIN}/frontend.js",str(Path(__file__).parent/"frontend.js"),False),
-        StaticPathConfig(f"/{DOMAIN}/brand",str(Path(__file__).parent/"brand"),True)])
+        StaticPathConfig(f"/{DOMAIN}/charts.css",str(Path(__file__).parent/"charts.css"),False),
+        StaticPathConfig(f"/{DOMAIN}/brand",str(Path(__file__).parent/"brand"),True),
+        StaticPathConfig(f"/{DOMAIN}/map",str(Path(__file__).parent/"map"),False)])
     websocket_api.async_register_command(hass,panel_state)
     return True
 
@@ -39,6 +41,7 @@ async def panel_state(hass,connection,msg):
                                     "settings":coordinator.settings,"entities":entities,
                                     "sources":{k:v for k,v in coordinator.sources.items() if k.endswith("_entity") or k in {"bms_control_entities","nws_alert_zone"}},
                                     "history_sources":history_sources,"alerts":coordinator.nws_alert_details,
+                                    "radar_location":{"latitude":round(hass.config.latitude,1),"longitude":round(hass.config.longitude,1)},
                                     "forecast":coordinator.weather_forecast,"forecast_updated":coordinator.forecast_time,"version":VERSION})
 
 

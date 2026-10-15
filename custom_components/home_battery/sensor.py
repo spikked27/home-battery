@@ -38,6 +38,14 @@ SENSORS={
  "bridge_status":("Bridge status",None,None,None),"command_result":("Last command result",None,None,None),
  "inverter_status_code":("Raw inverter status code",None,None,None),
  "weather_alert_count":("Active NWS alerts",None,None,None),
+ "projected_savings_day":("Projected savings per day","USD","monetary",None),
+ "projected_savings_month":("Projected savings per month","USD","monetary",None),
+ "projected_savings_year":("Projected savings per year","USD","monetary",None),
+ "recorded_savings_total":("Recorded savings total","USD","monetary","total"),
+ "recorded_savings_day":("Recorded savings today","USD","monetary",None),
+ "recorded_savings_month":("Recorded savings this month","USD","monetary",None),
+ "recorded_savings_year":("Recorded savings this year","USD","monetary",None),
+ "savings_mode":("Savings display mode",None,None,None),
 }
 for key,name,unit,device in [
     ("grid_voltage","Inverter utility voltage","V","voltage"),("grid_frequency","Inverter utility frequency","Hz","frequency"),

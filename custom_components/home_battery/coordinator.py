@@ -3,6 +3,7 @@ import asyncio
 from collections import deque
 from dataclasses import asdict
 from datetime import timedelta
+from functools import partial
 import json
 import logging
 import re
@@ -20,6 +21,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DEFAULTS, DOMAIN, PSEG_URL
 from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window
+from .projection import project_savings
 
 LOGGER=logging.getLogger(__name__)
 
@@ -47,6 +49,11 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.average=deque(maxlen=2880)
         self.store=Store(hass,1,f"{DOMAIN}.{entry.entry_id}")
         self.ledger={"avoided":0.,"charging":0.,"wear":0.,"energy_in":0.,"energy_out":0.,"periods":{},"tracked_seconds":0.}
+        self.recorded={"avoided":0.,"charging":0.,"wear":0.,"periods":{},"tracked_seconds":0.,"since":None}
+        self.load_profile=[]
+        self.profile_seen=0
+        self.profile_attempt=0
+        self.projection_cache=(None,None)
         self.previous=None
         self.last_tick=0
         self.last_fetch=0
@@ -66,6 +73,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         saved=await self.store.async_load()
         if saved:
             self.ledger.update(saved.get("ledger",{}))
+            self.recorded.update(saved.get("recorded",{}))
             self.hold_until=saved.get("hold_until",0)
             self.command_error=saved.get("command_error")
         if not await mqtt.async_wait_for_mqtt_client(self.hass):
@@ -219,6 +227,25 @@ class BatteryCoordinator(DataUpdateCoordinator):
         return pseg_rates(now,self.supply)
 
     async def fetch_context(self,now):
+        if time.time()-self.profile_attempt>=900:
+            self.profile_attempt=time.time()
+            try:
+                from homeassistant.components.recorder import get_instance
+                from homeassistant.components.recorder.statistics import statistics_during_period
+                entity=self.sources["load_entity"]
+                rows=await get_instance(self.hass).async_add_executor_job(partial(statistics_during_period,self.hass,now-timedelta(hours=26),now,{entity},"hour",None,{"mean"}))
+                state=self.hass.states.get(entity)
+                factor=1000 if state and state.attributes.get("unit_of_measurement")=="kW" else 1
+                groups={hour:[] for hour in range(24)}
+                for row in rows.get(entity,[]):
+                    value=numeric(row.get("mean"));stamp=numeric(row.get("start"))
+                    if value is not None and stamp is not None and 0<=value*factor<=10000:
+                        groups[dt_util.utc_from_timestamp(stamp).astimezone(now.tzinfo).hour].append(value*factor)
+                if all(groups.values()):
+                    self.load_profile=[sum(groups[h])/len(groups[h]) for h in range(24)]
+                    self.profile_seen=time.time()
+            except Exception as err:
+                LOGGER.debug("Reference load history unavailable: %s",type(err).__name__)
         zone=self.sources.get("nws_alert_zone")
         if zone and time.time()-self.nws_attempt>=300:
             self.nws_attempt=time.time()
@@ -274,6 +301,23 @@ class BatteryCoordinator(DataUpdateCoordinator):
         for kind,key in (("day",now.strftime("%Y-%m-%d")),("month",now.strftime("%Y-%m")),("year",now.strftime("%Y"))):
             totals=self.ledger["periods"].get(key,{})
             data[f"savings_{kind}"]=totals.get("avoided",0)-totals.get("charging",0)-totals.get("wear",0)
+            recorded=self.recorded["periods"].get(key,{})
+            data[f"recorded_savings_{kind}"]=recorded.get("avoided",0)-recorded.get("charging",0)-recorded.get("wear",0)
+        data["recorded_savings_total"]=self.recorded["avoided"]-self.recorded["charging"]-self.recorded["wear"]
+        data["savings_mode"]="Recorded" if self.settings["commissioned"] else "Projected"
+        profile=self.load_profile if time.time()-self.profile_seen<10800 else []
+        charge_values=[numeric(str(self.topics.get(f"control/{key}/state","")).split(" ")[0]) for key in ("utility_charge_current","total_charge_current")]
+        amps=min(charge_values) if all(v is not None for v in charge_values) else None
+        pack_voltage=round(d["voltage"] or d.get("inverter_battery_voltage") or 0)
+        key=repr((profile,self.settings,rates,amps,pack_voltage,storm,now.date()))
+        if key!=self.projection_cache[0]:
+            projected=project_savings(now,profile,self.settings,rates,amps,pack_voltage,storm) if profile else None
+            self.projection_cache=(key,projected)
+        projected=self.projection_cache[1]
+        for period_key in ("day","month","year"):
+            data[f"projected_savings_{period_key}"]=projected[period_key] if projected and d["fresh"] else None
+        self.attributes["projected_savings_day"]=(projected or {})|{"profile_updated":self.profile_seen,"source":self.sources["load_entity"],"load_kwh_day":sum(profile)/1000 if profile else None,"status":"Ready" if projected and d["fresh"] else "Waiting for a full daily load profile, current rates and fresh telemetry"}
+        self.attributes["recorded_savings_total"]={"since":self.recorded["since"],"method":"Measured operation; estimated tariff costs. Reference projections and legacy estimates excluded."}
         data["integrated_energy_in"]=self.ledger["energy_in"];data["integrated_energy_out"]=self.ledger["energy_out"]
         data["weather_alert_count"]=len(self.nws_alerts) if self.sources.get("nws_alert_zone") and time.time()-self.nws_seen<900 else None
         self.attributes["weather_alert_count"]={"events":self.nws_alerts,"last_successful_fetch":self.nws_seen,"source":"National Weather Service"}
@@ -305,10 +349,15 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 hours=(tick-self.last_tick)/3600
                 for key,value in old.items():
                     amount=value*hours;self.ledger[key]+=amount
+                    self.recorded[key]+=amount
+                    if self.recorded["since"] is None: self.recorded["since"]=now.isoformat()
                     for datekey in (now.strftime("%Y-%m-%d"),now.strftime("%Y-%m"),now.strftime("%Y")):
                         item=self.ledger["periods"].setdefault(datekey,{})
                         item[key]=item.get(key,0)+amount
+                        rec=self.recorded["periods"].setdefault(datekey,{})
+                        rec[key]=rec.get(key,0)+amount
                 self.ledger["tracked_seconds"]+=tick-self.last_tick
+                self.recorded["tracked_seconds"]+=tick-self.last_tick
         if getattr(self,"previous_energy",None) and d["fresh"] and 0<tick-self.last_tick<=90:
             old=self.previous_energy;hours=(tick-self.last_tick)/3600
             self.ledger["energy_in"]+=old[0]/1000*hours;self.ledger["energy_out"]+=old[1]/1000*hours
@@ -328,7 +377,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 LOGGER.error("Scheduling stopped after command failure: %s",err)
 
     def save(self):
-        self.store.async_delay_save(lambda:{"ledger":self.ledger,"hold_until":self.hold_until,"command_error":self.command_error},5)
+        self.store.async_delay_save(lambda:{"ledger":self.ledger,"recorded":self.recorded,"hold_until":self.hold_until,"command_error":self.command_error},5)
 
     def local_now(self):
         now=dt_util.now()
@@ -389,4 +438,4 @@ class BatteryCoordinator(DataUpdateCoordinator):
         if self.refresh_handle:
             self.refresh_handle.cancel();self.refresh_handle=None
         if self.pending and not self.pending.done(): self.pending.cancel()
-        await self.store.async_save({"ledger":self.ledger,"hold_until":self.hold_until,"command_error":self.command_error})
+        await self.store.async_save({"ledger":self.ledger,"recorded":self.recorded,"hold_until":self.hold_until,"command_error":self.command_error})

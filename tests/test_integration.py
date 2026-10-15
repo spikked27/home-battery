@@ -238,6 +238,8 @@ async def test_cash_and_energy_accounting_exclude_stale_gaps(coordinator):
         with patch("custom_components.home_battery.coordinator.time.time",return_value=clock+30):
             await coordinator.async_tick()
         assert coordinator.ledger["avoided"]>0
+        assert coordinator.recorded["avoided"] == coordinator.ledger["avoided"]
+        assert coordinator.recorded["since"] is not None
         assert coordinator.ledger["energy_out"]==pytest.approx(.005)
         before=coordinator.ledger["avoided"]
         with patch("custom_components.home_battery.coordinator.time.time",return_value=clock+300):
@@ -289,3 +291,42 @@ async def test_unavailable_weather_is_not_an_all_clear(coordinator):
     coordinator.sources["weather_entity"]="weather.failed"
     coordinator.hass.states.async_set("weather.failed","unavailable")
     assert coordinator.storm()==(True,"Automatic advice: weather stale, reserve held")
+
+
+async def test_projection_never_credits_reference_load(coordinator):
+    import time
+    clock=time.time()
+    coordinator.settings.update(price_source="Manual prices",manual_super_rate=.1,manual_off_rate=.2,manual_peak_rate=.3,commissioned=False)
+    coordinator.load_profile=[330.]*24
+    coordinator.profile_seen=clock
+    coordinator.ledger["avoided"]=42.
+    coordinator.topics.update({"control/utility_charge_current/state":"2 A","control/total_charge_current/state":"30 A","telemetry/battery_voltage":"52"})
+    with patch.object(coordinator,"fetch_context",new_callable=AsyncMock):
+        for offset in (0,30):
+            with patch("custom_components.home_battery.coordinator.time.time",return_value=clock+offset):
+                await coordinator.async_tick()
+    assert coordinator.data["savings_mode"]=="Projected"
+    assert coordinator.data["projected_savings_day"] is not None
+    assert coordinator.data["recorded_savings_total"]==0
+    assert coordinator.recorded["since"] is None
+    assert coordinator.ledger["avoided"]==42.
+
+
+async def test_recorder_profile_requires_all_hours_and_converts_kw(coordinator):
+    from datetime import timedelta
+    import time
+    coordinator.settings["price_source"]="Manual prices"
+    now=coordinator.local_now()
+    rows={"sensor.load":[{"mean":.33,"start":(now-timedelta(hours=h)).timestamp()} for h in range(24)]}
+    coordinator.hass.states.async_set("sensor.load",.33,{"unit_of_measurement":"kW"})
+    executor=AsyncMock(return_value=rows)
+    with patch("homeassistant.components.recorder.get_instance",return_value=SimpleNamespace(async_add_executor_job=executor)):
+        await coordinator.fetch_context(now)
+    assert coordinator.load_profile==[330.]*24
+    assert coordinator.profile_seen>0
+    coordinator.load_profile=[]
+    coordinator.profile_attempt=0
+    executor.return_value={"sensor.load":rows["sensor.load"][:23]}
+    with patch("homeassistant.components.recorder.get_instance",return_value=SimpleNamespace(async_add_executor_job=executor)):
+        await coordinator.fetch_context(now)
+    assert coordinator.load_profile==[]
