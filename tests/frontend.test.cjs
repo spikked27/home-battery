@@ -39,3 +39,13 @@ const cells=Panel.prototype.cellChart.call({},{cells:[3.5,3.55,3.6]});
 assert.equal((cells.match(/data-cell="/g)||[]).length,3,'Every cell gets its own vertical bar');
 assert(cells.includes('All bars share'),'Comparison must disclose the common scale');
 console.log('4 visual hierarchy and bucket checks passed');
+
+const radar=fs.readFileSync('custom_components/home_battery/map/index.html','utf8');
+const pathMatcher=radar.match(/filter\(f=>\/(.+?)\/\.test\(f.path\)/);
+assert(pathMatcher,'Radar frame validation is present');
+const framePattern=new RegExp(pathMatcher[1]);
+assert(framePattern.test('/v2/radar/301654572b9d'),'Current hash frame paths supported');
+assert(framePattern.test('/v2/radar/1792070400'),'Legacy numeric frames supported');
+assert(!framePattern.test('/v2/radar/../../private'),'Traversal rejected');
+assert(radar.includes('name="referrer" content="origin"'),'Basemap receives origin referrer without location query');
+console.log('4 radar compatibility checks passed');
