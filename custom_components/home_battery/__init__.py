@@ -1,5 +1,6 @@
 """Home Battery: local telemetry, human-readable controls and energy scheduling."""
 from pathlib import Path
+from hashlib import sha256
 import voluptuous as vol
 from homeassistant.components import frontend, panel_custom, websocket_api
 from homeassistant.components.http import StaticPathConfig
@@ -51,10 +52,12 @@ async def async_setup_entry(hass,entry):
     try:
         await coordinator.async_start()
         await hass.config_entries.async_forward_entry_setups(entry,PLATFORMS)
+        # Content-address the bundle so preview/stable updates cannot reuse stale UI.
+        bundle_hash=await hass.async_add_executor_job(lambda:sha256((Path(__file__).parent/"frontend.js").read_bytes()).hexdigest()[:12])
         await panel_custom.async_register_panel(hass,
             frontend_url_path=f"home-battery-{entry.entry_id[:8]}",webcomponent_name="home-battery-panel",
             sidebar_title=entry.title,sidebar_icon="mdi:home-battery-outline",
-            module_url=f"/{DOMAIN}/frontend.js?v={VERSION}",config={"entry_id":entry.entry_id})
+            module_url=f"/{DOMAIN}/frontend.js?v={VERSION}-{bundle_hash}",config={"entry_id":entry.entry_id})
     except Exception:
         hass.data[DOMAIN].pop(entry.entry_id,None)
         await coordinator.async_close()
