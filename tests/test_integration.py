@@ -301,6 +301,7 @@ async def test_projection_never_credits_reference_load(coordinator):
     coordinator.profile_seen=clock
     coordinator.ledger["avoided"]=42.
     coordinator.topics.update({"control/utility_charge_current/state":"2 A","control/total_charge_current/state":"30 A","telemetry/battery_voltage":"52"})
+    coordinator.received["telemetry/battery_voltage"]=clock
     with patch.object(coordinator,"fetch_context",new_callable=AsyncMock):
         for offset in (0,30):
             with patch("custom_components.home_battery.coordinator.time.time",return_value=clock+offset):
