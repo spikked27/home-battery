@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.2
+
+- Repeated taps on a pending source request preserve its deadline without repeating writes.
+- After restarting beyond a pending deadline, allow up to 90 seconds for live telemetry to confirm whether transfer already completed before reporting failure.
+
 ## 1.3.1
 
 - Observe source transfers for up to 12 minutes without blocking Home Assistant, reflecting two approximately ten-minute handovers in captured telemetry.

@@ -502,3 +502,35 @@ async def test_completed_transaction_durably_saves_observation(coordinator):
         assert save.await_count==2
         assert save.call_args.args[0]["source_intent"] is None
         assert save.call_args.args[0]["source_transfer"]["value"]=="SBU"
+
+
+async def test_repeated_manual_request_preserves_deadline_without_writes(coordinator):
+    start_transfer(coordinator)
+    original=dict(coordinator.source_transfer)
+    with patch.object(coordinator,"async_control",new_callable=AsyncMock) as control:
+        await coordinator.async_source("SBU")
+        control.assert_not_awaited()
+    assert coordinator.source_transfer==original
+
+
+async def test_restart_after_deadline_waits_for_live_confirmation(coordinator):
+    import time
+    start_transfer(coordinator,deadline=time.time()-20)
+    coordinator.received.clear()
+    coordinator.recompute()
+    assert coordinator.source_transfer and coordinator.command_error is None
+    assert "fresh telemetry" in coordinator.transfer_status
+    coordinator.received.update({key:time.time() for key in ("status","raw_readings","telemetry/grid_voltage")})
+    coordinator.recompute()
+    assert coordinator.source_transfer is None
+    assert coordinator.transfer_status=="Battery operation verified"
+
+
+async def test_restart_grace_is_bounded_when_telemetry_never_returns(coordinator):
+    import time
+    start_transfer(coordinator,deadline=time.time()-20)
+    coordinator.start_time=time.time()-91
+    coordinator.received.clear()
+    coordinator.recompute()
+    assert coordinator.source_transfer is None
+    assert coordinator.command_error

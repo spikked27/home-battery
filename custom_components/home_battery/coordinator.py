@@ -422,6 +422,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
         if value not in {"SBU","SUB"}: raise HomeAssistantError("Only confirmed battery/grid source actions are supported")
         if self.source_lock.locked(): raise HomeAssistantError("Another source transition is in progress")
         if self.command_error: raise HomeAssistantError("A command fault is latched; review Advanced before another source request")
+        # Repeated taps are idempotent: preserve the original observation and
+        # deadline rather than sending the same preference again.
+        if self.source_transfer and self.source_transfer["value"]==value: return
         d=self.measurements()
         if not d["fresh"] or not d["healthy"]: raise HomeAssistantError("Fresh healthy telemetry is required before source switching")
         if value=="SUB":
@@ -520,6 +523,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
             self.transfer_status=f"{expected if expected=='Battery' else 'Utility'} operation verified"
             self.source_transfer=None
             self.save()
+        elif time.time()>=transfer["deadline"] and not d["fresh"] and time.time()-self.start_time<90:
+            # On a restart after the deadline, wait briefly for live telemetry
+            # before deciding whether the inverter already completed transfer.
+            self.transfer_status="Waiting for fresh telemetry to confirm inverter transfer"
         elif time.time()>=transfer["deadline"]:
             self.command_error=f"{expected} transfer not verified after 12 minutes; actual source {d['mode']}. Check inverter conditions in Advanced. No retry sent."
             self.transfer_status=""
