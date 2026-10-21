@@ -8,7 +8,7 @@ ROOT=os.environ.get("MQTT_ROOT","hpvinv09/inverter")
 DEVICE={"identifiers":["hpvinv09_unit"],"name":"HPVINV09 Local Inverter","manufacturer":"DATOUBOSS / MFUZOP","model":"Standalone local inverter bridge","sw_version":VERSION}
 def legacy_label(c,v):
  if c.name=="output_priority":return {"00":"SUB","01":"SBU","02":"Code 02 (label unconfirmed)"}[v]
- if c.name=="charger_priority":return {"01":"SNU (solar + utility)"}.get(v,"Code "+v+" (label unconfirmed)")
+ if c.name=="charger_priority":return {"01":"SNU (solar + utility)","02":"Solar only (utility charging disabled)"}.get(v,"Code "+v+" (label unconfirmed)")
  if c.prefix.startswith("toggle:"):return "Enabled" if v=="1" else "Disabled"
  return v+(" "+c.unit if c.unit else "")
 
@@ -20,6 +20,7 @@ def label(c,v):
  return number+(" "+c.unit if c.unit else "")
 
 def option_value(c,requested):
+ if c.name=="charger_priority" and requested=="Code 02 (label unconfirmed)":return "02"
  values=[v for v in c.values if requested in (label(c,v),legacy_label(c,v))]
  if len(values)!=1:raise ValueError('Value outside allowed options or site cap')
  return values[0]

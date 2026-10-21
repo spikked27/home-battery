@@ -76,7 +76,7 @@ CONTROLS=[
  C("source_notification","toggle:y","0 1","HEEP1",3,5,6,native="PDy/PEy"),
  C("overload_restart","toggle:u","0 1","HEEP1",3,4,5,native="PDu/PEu"),
  C("overtemperature_restart","toggle:v","0 1","HEEP1",3,6,7,native="PDv/PEv"),
- C("bms_return_battery_soc","BMSU2BC","090 095","HEEP1",12,unit="%"),
+ C("bms_return_battery_soc","BMSU2BC","025 060 090 095","HEEP1",12,unit="%"),
  C("bms_return_utility_soc","BMSB2UC","020 025","HEEP1",11,unit="%"),
  C("second_output_discharge_duration","PDDCGT","0000 0005","HEEP2",16,2,5,unit="min"),
  C("ac_input_range","PGR","00 01","HEEP1",3,0,1,native="PGR",note="Configuration verified; UPS/APL labels from related implementation."),
