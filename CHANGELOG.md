@@ -2,6 +2,8 @@
 
 ## 1.3.0
 
+- Coordinate source preference with charging permission: battery use disables utility charging; grid charging restores SNU, within the existing DC current cap.
+
 - Verify fresh actual inverter operating mode after SUB/SBU commands, including an unchanged preference. A stored setting alone no longer counts as a transfer.
 - Show transfer progress and latch an actionable fault if the requested mode does not occur, with no automatic command retries.
 - Document commissioning of the hardware return-to-battery SOC threshold before enabling source scheduling.

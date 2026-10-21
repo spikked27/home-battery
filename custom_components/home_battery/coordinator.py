@@ -34,6 +34,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.sources=dict(entry.data)|dict(entry.options)
         self.data={}
         self.transfer_status=""
+        self.source_lock=asyncio.Lock()
         self.attributes={}
         self.topics={}
         self.received={}
@@ -373,7 +374,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             and tick-self.last_switch>=300 and plan.desired_priority):
             # Only two confirmed source preferences; never change BMS thresholds or output limits.
             try:
-                await self.async_control("output_priority",plan.desired_priority,automatic=True)
+                await self.async_source(plan.desired_priority,automatic=True)
             except HomeAssistantError as err:
                 LOGGER.error("Scheduling stopped after command failure: %s",err)
 
@@ -392,7 +393,28 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.previous=None
         self.recompute()
 
-    async def async_control(self,key,value,automatic=False):
+    async def async_source(self,value,automatic=False):
+        """Coordinate charging permission and output preference; verify real transfer."""
+        if value not in {"SBU","SUB"}: raise HomeAssistantError("Only confirmed battery/grid source actions are supported")
+        if self.source_lock.locked(): raise HomeAssistantError("Another source transition is in progress")
+        d=self.measurements()
+        if not d["fresh"] or not d["healthy"]: raise HomeAssistantError("Fresh healthy telemetry is required before source switching")
+        if value=="SUB":
+            for key in ("utility_charge_current","total_charge_current"):
+                amps=numeric(str(self.topics.get(f"control/{key}/state","")).split(" ")[0])
+                if amps is None or amps>min(30,self.settings["charge_cap_a"]):
+                    raise HomeAssistantError("Read or lower charging limits before permitting utility charging")
+        options=self.topics.get("control/charger_priority/attributes",{}).get("allowed_values",[])
+        candidates=("Solar only (utility charging disabled)","Code 02 (label unconfirmed)") if value=="SBU" else ("SNU (solar + utility)",)
+        charging=next((v for v in candidates if v in options),None)
+        if charging is None: raise HomeAssistantError("Bridge does not advertise the commissioned charging-source mode")
+        async with self.source_lock:
+            await self.async_control("charger_priority",charging,automatic=automatic,source_transaction=True)
+            await self.async_control("output_priority",value,automatic=automatic,source_transaction=True)
+
+    async def async_control(self,key,value,automatic=False,source_transaction=False):
+        if self.source_lock.locked() and not source_transaction:
+            raise HomeAssistantError("A coordinated source transition is in progress")
         if self.stopped: raise HomeAssistantError("Integration is unloaded; commands are disabled")
         if not mqtt.is_connected(self.hass): raise HomeAssistantError("MQTT is disconnected; no command was sent")
         from .select import CATALOG
@@ -443,7 +465,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 if self.pending and not self.pending.done(): self.pending.cancel()
                 self.pending=None;self.pending_key=None;self.pending_value=None;self.save();self.recompute()
 
-    async def _async_verify_source(self,value,not_before=None,timeout=75):
+    async def _async_verify_source(self,value,not_before=None,timeout=150):
         """A stored preference is not proof of power transfer. Never retry writes."""
         expected="Battery" if value=="SBU" else "Line"
         deadline=self.hass.loop.time()+timeout
@@ -453,7 +475,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
             raw=self.topics.get("raw_readings",{}).get("HSTS",{})
             age=numeric(raw.get("age_seconds"))
             sampled=self.received.get("raw_readings",0)-(age if age is not None else 999999)
-            if d["fresh"] and d["healthy"] and d["mode"]==expected and (not_before is None or sampled>=not_before):
+            pv=d.get("inverter_pv_power")
+            charge_ok=expected!="Battery" or pv is None or pv>5 or (d["charge_w"] is not None and d["charge_w"]<=5)
+            if d["fresh"] and d["healthy"] and charge_ok and d["mode"]==expected and (not_before is None or sampled>=not_before):
                 return
             if self.hass.loop.time()>=deadline: break
             await asyncio.sleep(1)

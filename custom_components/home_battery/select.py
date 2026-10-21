@@ -43,4 +43,7 @@ class InverterSelect(BatteryEntity,SelectEntity):
         return CATALOG[self.key]|self.coordinator.topics.get(f"control/{self.key}/attributes",{})
     async def async_select_option(self,option):
         if option not in self.options: raise HomeAssistantError("Value outside bridge range or charging ceiling")
-        await self.coordinator.async_control(self.key,option)
+        if self.key=="output_priority" and option in {"SBU","SUB"}:
+            await self.coordinator.async_source(option)
+        else:
+            await self.coordinator.async_control(self.key,option)

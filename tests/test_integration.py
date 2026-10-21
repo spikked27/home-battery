@@ -360,3 +360,40 @@ async def test_automatic_same_preference_checks_actual_mode_and_latches_failure(
         publish.assert_not_called()
         verify.assert_awaited_once()
     assert coordinator.command_error
+
+
+async def test_battery_action_disables_grid_charging_before_source_change(coordinator):
+    coordinator.topics["control/charger_priority/attributes"]={"allowed_values":["SNU (solar + utility)","Solar only (utility charging disabled)"]}
+    with patch.object(coordinator,"async_control",new_callable=AsyncMock) as control:
+        await coordinator.async_source("SBU")
+    assert [c.args for c in control.await_args_list]==[("charger_priority","Solar only (utility charging disabled)"),("output_priority","SBU")]
+    assert all(c.kwargs["source_transaction"] for c in control.await_args_list)
+
+
+async def test_grid_action_checks_charge_caps_before_enabling_charger(coordinator):
+    coordinator.topics["control/charger_priority/attributes"]={"allowed_values":["SNU (solar + utility)"]}
+    coordinator.topics["control/utility_charge_current/state"]="40 A"
+    coordinator.topics["control/total_charge_current/state"]="30 A"
+    with patch.object(coordinator,"async_control",new_callable=AsyncMock) as control:
+        with pytest.raises(HomeAssistantError,match="charging limits"):
+            await coordinator.async_source("SUB")
+        control.assert_not_awaited()
+    coordinator.topics["control/utility_charge_current/state"]="5 A"
+    with patch.object(coordinator,"async_control",new_callable=AsyncMock) as control:
+        await coordinator.async_source("SUB",automatic=True)
+    assert [c.args for c in control.await_args_list]==[("charger_priority","SNU (solar + utility)"),("output_priority","SUB")]
+
+
+async def test_no_competing_control_during_source_transition(coordinator):
+    async with coordinator.source_lock:
+        with pytest.raises(HomeAssistantError,match="source transition"):
+            await coordinator.async_control("output_priority","SBU")
+
+
+async def test_battery_mode_still_charging_without_pv_is_not_verified_discharge(coordinator):
+    coordinator.hass.states.async_set("sensor.charge",300,{"unit_of_measurement":"W"})
+    coordinator.topics["telemetry/pv_power"]="0"
+    import time
+    coordinator.received["telemetry/pv_power"]=time.time()
+    with pytest.raises(HomeAssistantError,match="not verified"):
+        await coordinator._async_verify_source("SBU",timeout=0)

@@ -13,7 +13,7 @@ async def async_setup_entry(hass,entry,async_add_entities):
 class BatteryButton(BatteryEntity,ButtonEntity):
     async def async_press(self):
         if self.key in {"use_battery","use_grid"}:
-            await self.coordinator.async_control("output_priority","SBU" if self.key=="use_battery" else "SUB")
+            await self.coordinator.async_source("SBU" if self.key=="use_battery" else "SUB")
         elif self.key=="resume_schedule":
             self.coordinator.hold_until=0;self.coordinator.save();self.coordinator.recompute()
         else:
