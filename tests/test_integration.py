@@ -338,6 +338,7 @@ async def test_recorder_profile_requires_all_hours_and_converts_kw(coordinator):
 async def test_stored_sbu_does_not_count_as_actual_transfer(coordinator):
     coordinator.topics["control/output_priority/state"]="SBU"
     coordinator.topics["control/bms_return_battery_soc/state"]="95 %"
+    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 L010000 000 1000\r","age_seconds":0}}))
     with pytest.raises(HomeAssistantError,match="actual Line"):
         await coordinator._async_verify_source("SBU",timeout=0)
 
