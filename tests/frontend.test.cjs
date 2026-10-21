@@ -49,3 +49,11 @@ assert(framePattern.test('/v2/radar/1792070400'),'Legacy numeric frames supporte
 assert(!framePattern.test('/v2/radar/../../private'),'Traversal rejected');
 assert(radar.includes('name="referrer" content="origin"'),'Basemap receives origin referrer without location query');
 console.log('4 radar compatibility checks passed');
+
+const waiting=Panel.prototype.transferNotice.call({}, {mode:'Line',source_transfer:{value:'SBU'}});
+assert(waiting.includes('Waiting for inverter transfer')&&waiting.includes('Line'),'Waiting keeps actual source visible');
+assert(!waiting.includes('class="error"'),'Expected recovery delay is not a fault banner');
+assert.equal(Panel.prototype.transferNotice.call({}, {command_result:'Battery operation verified'}),'','Successful transfers do not leave a permanent banner');
+const paused=Panel.prototype.transferNotice.call({}, {scheduler_status:'Fault latched'});
+assert(paused.includes('Advanced')&&paused.includes('role="alert"'),'Real faults remain visible with a diagnostic destination');
+console.log('4 transfer-status presentation checks passed');

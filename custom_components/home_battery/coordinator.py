@@ -24,6 +24,10 @@ from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, 
 from .projection import project_savings
 
 LOGGER=logging.getLogger(__name__)
+# Two captured handovers took approximately ten minutes from utility entry.
+# Allow additional polling/settling time; this is an observation window, not a
+# promise that firmware will always transfer after a fixed ten-minute timer.
+SOURCE_TRANSFER_WINDOW=12*60
 
 
 class BatteryCoordinator(DataUpdateCoordinator):
@@ -34,6 +38,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.sources=dict(entry.data)|dict(entry.options)
         self.data={}
         self.transfer_status=""
+        self.source_transfer=None
+        self.source_intent=None
         self.source_lock=asyncio.Lock()
         self.attributes={}
         self.topics={}
@@ -73,11 +79,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
 
     async def async_start(self):
         saved=await self.store.async_load()
-        if saved:
-            self.ledger.update(saved.get("ledger",{}))
-            self.recorded.update(saved.get("recorded",{}))
-            self.hold_until=saved.get("hold_until",0)
-            self.command_error=saved.get("command_error")
+        self._restore_state(saved)
         if not await mqtt.async_wait_for_mqtt_client(self.hass):
             raise HomeAssistantError("Configure the Home Assistant MQTT integration first")
         unsub=await mqtt.async_subscribe(self.hass,self.sources["mqtt_root"]+"/#",self._message,qos=0)
@@ -91,6 +93,19 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 self.entry.async_on_unload(await mqtt.async_subscribe(self.hass,self.sources[key],heartbeat,qos=0))
         self.entry.async_on_unload(async_track_time_interval(self.hass,self.async_tick,timedelta(seconds=30)))
         await self.async_tick()
+
+    def _restore_state(self,saved):
+        if not saved: return
+        self.ledger.update(saved.get("ledger",{}))
+        self.recorded.update(saved.get("recorded",{}))
+        self.hold_until=saved.get("hold_until",0)
+        self.last_switch=saved.get("last_switch",0)
+        self.command_error=saved.get("command_error")
+        self.source_transfer=saved.get("source_transfer")
+        self.source_intent=saved.get("source_intent")
+        if self.source_intent:
+            self.source_transfer=None
+            self.command_error="Source change interrupted by restart; inspect actual source and stored settings in Advanced before acknowledging. No commands replayed."
 
     @callback
     def _message(self,msg):
@@ -109,6 +124,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         if not msg.retain: self.received[key]=time.time()
         if key=="control/output_priority/state" and old is not None and old!=payload and self.pending_key!="output_priority":
             self.hold_until=time.time()+self.settings["manual_override_minutes"]*60
+            self.source_transfer=None
+            self.transfer_status="Source preference changed outside this request"
             self.save()
         if key=="last_result" and not msg.retain and self.pending and not self.pending.done():
             stamp=dt_util.parse_datetime(payload.get("timestamp","")) if isinstance(payload,dict) else None
@@ -144,7 +161,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         value=numeric(state.state)
         if value is not None and unit=="kW": value*=1000
         if value is not None and unit=="Wh": value/=1000
-        if value is not None and unit=="°F": value=(value-32)*5/9
+        if value is not None and unit=="Â°F": value=(value-32)*5/9
         return value
 
     def measurements(self):
@@ -152,7 +169,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             ("soc","soc_entity",{"%"}),("load_w","load_entity",{"W","kW"}),
             ("charge_w","charge_power_entity",{"W","kW"}),("discharge_w","discharge_power_entity",{"W","kW"}),
             ("voltage","voltage_entity",{"V"}),("current","current_entity",{"A"}),
-            ("temperature","temperature_entity",{"°C","°F"}),("remaining_ah","remaining_ah_entity",{"Ah"}),
+            ("temperature","temperature_entity",{"Â°C","Â°F"}),("remaining_ah","remaining_ah_entity",{"Ah"}),
             ("energy_in","energy_in_entity",{"kWh","Wh"}),("energy_out","energy_out_entity",{"kWh","Wh"})]}
         raw=self.topics.get("raw_readings",{})
         mode=raw.get("HSTS",{}).get("ascii","") if isinstance(raw,dict) else ""
@@ -168,7 +185,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         status=self.topics.get("status",{})
         d["healthy"]=bool(alarm_fresh and d["alarms"].lower() in {"no alarms","none","ok","0","off"}
                           and isinstance(status,dict) and status.get("status") in {"ready","write_in_progress"}
-                          and not status.get("fault") and not self.command_error and d["inverter_status_code"]=="00")
+                          and not status.get("fault") and d["inverter_status_code"]=="00")
         d["fresh"]=bool(self.fresh_topic("status") and self.fresh_topic("raw_readings")
                         and isinstance(raw,dict) and 0<=raw.get("HSTS",{}).get("age_seconds",999)<45
                         and d["mode"] in {"Line","Battery"} and all(d[k] is not None for k in ("soc","load_w","charge_w","discharge_w","grid_voltage")))
@@ -288,6 +305,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
 
     def recompute(self):
         now=self.local_now();d=self.measurements();storm,weather_mode=self.storm();rates=self.prices(now)
+        self._update_source_transfer(d)
         plan=make_plan(now,d,self.settings,rates,storm)
         period=price_window(now,self.settings)
         extreme=cell_extremes(d["cells"])
@@ -298,6 +316,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                   price_status="Manual prices" if self.settings["price_source"]=="Manual prices" else "Published PSEG estimate" if rates else "Rates unavailable / review needed",
                   scheduler_status="Fault latched" if self.command_error else "Observe only" if not self.settings["automatic_enabled"] else "Manual hold" if time.time()<self.hold_until else "Automatic",
                   command_result=self.command_error or self.transfer_status or self.topics.get("last_result",{}).get("status","No command"),
+                  source_transfer=dict(self.source_transfer) if self.source_transfer else None,
                   bridge_status=self.topics.get("status",{}).get("status","unavailable"))
         data["estimated_savings_total"]=self.ledger["avoided"]-self.ledger["charging"]-self.ledger["wear"]
         for kind,key in (("day",now.strftime("%Y-%m-%d")),("month",now.strftime("%Y-%m")),("year",now.strftime("%Y"))):
@@ -370,7 +389,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         while self.average and tick-self.average[0][0]>86400: self.average.popleft()
         self.save();self.recompute()
         if (self.settings["automatic_enabled"] and self.settings["commissioned"] and self.settings["switching_confirmed"]
-            and not self.command_error and tick>=self.hold_until and tick-self.start_time>=90
+            and not self.command_error and not self.source_transfer and tick>=self.hold_until and tick-self.start_time>=90
             and tick-self.last_switch>=300 and plan.desired_priority):
             # Only two confirmed source preferences; never change BMS thresholds or output limits.
             try:
@@ -379,7 +398,12 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 LOGGER.error("Scheduling stopped after command failure: %s",err)
 
     def save(self):
-        self.store.async_delay_save(lambda:{"ledger":self.ledger,"recorded":self.recorded,"hold_until":self.hold_until,"command_error":self.command_error},5)
+        self.store.async_delay_save(self._saved_state,5)
+
+    def _saved_state(self):
+        return {"ledger":self.ledger,"recorded":self.recorded,"hold_until":self.hold_until,
+                "command_error":self.command_error,"source_transfer":self.source_transfer,
+                "source_intent":self.source_intent,"last_switch":self.last_switch}
 
     def local_now(self):
         now=dt_util.now()
@@ -397,6 +421,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         """Coordinate charging permission and output preference; verify real transfer."""
         if value not in {"SBU","SUB"}: raise HomeAssistantError("Only confirmed battery/grid source actions are supported")
         if self.source_lock.locked(): raise HomeAssistantError("Another source transition is in progress")
+        if self.command_error: raise HomeAssistantError("A command fault is latched; review Advanced before another source request")
         d=self.measurements()
         if not d["fresh"] or not d["healthy"]: raise HomeAssistantError("Fresh healthy telemetry is required before source switching")
         if value=="SUB":
@@ -408,9 +433,22 @@ class BatteryCoordinator(DataUpdateCoordinator):
         candidates=("Solar only (utility charging disabled)","Code 02 (label unconfirmed)") if value=="SBU" else ("SNU (solar + utility)",)
         charging=next((v for v in candidates if v in options),None)
         if charging is None: raise HomeAssistantError("Bridge does not advertise the commissioned charging-source mode")
+        if automatic and self.source_transfer: return
         async with self.source_lock:
-            await self.async_control("charger_priority",charging,automatic=automatic,source_transaction=True)
-            await self.async_control("output_priority",value,automatic=automatic,source_transaction=True)
+            # An explicit new source request supersedes the old observation.
+            self.source_transfer=None
+            self.source_intent={"value":value,"charging":charging}
+            await self.store.async_save(self._saved_state())
+            try:
+                await self.async_control("charger_priority",charging,automatic=automatic,source_transaction=True)
+                await self.async_control("output_priority",value,automatic=automatic,source_transaction=True)
+            except HomeAssistantError as err:
+                self.command_error=str(err)
+                self.source_intent=None
+                await self.store.async_save(self._saved_state())
+                raise
+            self.source_intent=None
+            await self.store.async_save(self._saved_state())
 
     async def async_control(self,key,value,automatic=False,source_transaction=False):
         if self.source_lock.locked() and not source_transaction:
@@ -438,6 +476,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             raise HomeAssistantError("Bridge is not ready, or a command fault is latched")
         if self.lock.locked(): raise HomeAssistantError("Another command is awaiting verification")
         async with self.lock:
+            if key in {"output_priority","charger_priority"}: self.source_transfer=None
             already=automatic and self.topics.get(f"control/{key}/state")==value
             self.pending=self.hass.loop.create_future();self.pending_key=key;self.pending_value=value;self.command_time=time.time()
             self.transfer_status="Requesting source preference" if key=="output_priority" else ""
@@ -451,10 +490,11 @@ class BatteryCoordinator(DataUpdateCoordinator):
                         await asyncio.sleep(.5)
                     else: raise HomeAssistantError("Acknowledgement arrived without matching settings readback")
                 if key=="output_priority" and value in {"SBU","SUB"}:
-                    self.transfer_status="Checking actual battery operation" if value=="SBU" else "Checking actual utility operation"
-                    self.recompute()
-                    await self._async_verify_source(value,not_before=None if already else self.command_time)
-                    self.transfer_status="Battery operation verified" if value=="SBU" else "Utility operation verified"
+                    # ACK/readback completes the service call. Observe actual
+                    # power transfer independently, without blocking HA for minutes.
+                    self.source_transfer={"value":value,"not_before":None if already else self.command_time,
+                                          "deadline":time.time()+SOURCE_TRANSFER_WINDOW}
+                    self._update_source_transfer(self.measurements())
                 self.last_switch=time.time()
                 if not automatic: self.hold_until=time.time()+self.settings["manual_override_minutes"]*60
             except (TimeoutError,HomeAssistantError) as err:
@@ -465,29 +505,32 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 if self.pending and not self.pending.done(): self.pending.cancel()
                 self.pending=None;self.pending_key=None;self.pending_value=None;self.save();self.recompute()
 
-    async def _async_verify_source(self,value,not_before=None,timeout=150):
-        """A stored preference is not proof of power transfer. Never retry writes."""
-        expected="Battery" if value=="SBU" else "Line"
-        deadline=self.hass.loop.time()+timeout
-        while True:
-            if self.stopped: raise HomeAssistantError("Integration unloaded while verifying source transfer")
-            d=self.measurements()
-            raw=self.topics.get("raw_readings",{}).get("HSTS",{})
-            age=numeric(raw.get("age_seconds"))
-            sampled=self.received.get("raw_readings",0)-(age if age is not None else 999999)
-            pv=d.get("inverter_pv_power")
-            charge_ok=expected!="Battery" or pv is None or pv>5 or (d["charge_w"] is not None and d["charge_w"]<=5)
-            if d["fresh"] and d["healthy"] and charge_ok and d["mode"]==expected and (not_before is None or sampled>=not_before):
-                return
-            if self.hass.loop.time()>=deadline: break
-            await asyncio.sleep(1)
-        recovery=self.topics.get("control/bms_return_battery_soc/state","unknown")
-        detail=f"; battery SOC {d['soc']}%, return-to-battery threshold {recovery}" if value=="SBU" else ""
-        raise HomeAssistantError(f"{value} preference stored, but {expected} operation was not verified (actual {d['mode']}{detail}). Automatic writes paused; no retry sent.")
+    def _update_source_transfer(self,d):
+        """Observe fresh telemetry only. Never retransmit a source command."""
+        transfer=self.source_transfer
+        if not transfer: return
+        expected="Battery" if transfer["value"]=="SBU" else "Line"
+        raw=self.topics.get("raw_readings",{}).get("HSTS",{})
+        age=numeric(raw.get("age_seconds"))
+        sampled=self.received.get("raw_readings",0)-(age if age is not None else 999999)
+        pv=d.get("inverter_pv_power")
+        charge_ok=expected!="Battery" or pv is None or pv>5 or (d["charge_w"] is not None and d["charge_w"]<=5)
+        if (d["fresh"] and d["healthy"] and charge_ok and d["mode"]==expected
+            and (transfer["not_before"] is None or sampled>=transfer["not_before"])):
+            self.transfer_status=f"{expected if expected=='Battery' else 'Utility'} operation verified"
+            self.source_transfer=None
+            self.save()
+        elif time.time()>=transfer["deadline"]:
+            self.command_error=f"{expected} transfer not verified after 12 minutes; actual source {d['mode']}. Check inverter conditions in Advanced. No retry sent."
+            self.transfer_status=""
+            self.source_transfer=None
+            self.save()
+        else:
+            self.transfer_status=f"Waiting for inverter transfer to {expected.lower()}; actual source {d['mode']}"
 
     async def async_close(self):
         self.stopped=True
         if self.refresh_handle:
             self.refresh_handle.cancel();self.refresh_handle=None
         if self.pending and not self.pending.done(): self.pending.cancel()
-        await self.store.async_save({"ledger":self.ledger,"recorded":self.recorded,"hold_until":self.hold_until,"command_error":self.command_error})
+        await self.store.async_save(self._saved_state())

@@ -19,4 +19,4 @@ class BatteryButton(BatteryEntity,ButtonEntity):
         else:
             if not self.coordinator.fresh_topic("status") or self.coordinator.topics.get("status",{}).get("status")!="ready":
                 raise HomeAssistantError("Bridge must be ready before acknowledging a command fault")
-            self.coordinator.command_error=None;self.coordinator.save();self.coordinator.recompute()
+            self.coordinator.command_error=None;self.coordinator.source_intent=None;self.coordinator.save();self.coordinator.recompute()

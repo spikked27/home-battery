@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1
+
+- Observe source transfers for up to 12 minutes without blocking Home Assistant, reflecting two approximately ten-minute handovers in captured telemetry.
+- Show a compact waiting status while keeping actual source and battery reserve visible. A stored preference still does not count as actual power transfer.
+- Persist transfer deadlines, manual holds and switch timing; resume observation after restart without replaying writes. Interrupted settings transactions require review.
+- Keep automatic writes inhibited during a pending transfer. Genuine write failures and expired transfer observations remain actionable in Advanced.
+
 ## 1.3.0
 
 - Coordinate source preference with charging permission: battery use disables utility charging; grid charging restores SNU, within the existing DC current cap.

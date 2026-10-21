@@ -335,31 +335,105 @@ async def test_recorder_profile_requires_all_hours_and_converts_kw(coordinator):
     assert coordinator.load_profile==[]
 
 
-async def test_stored_sbu_does_not_count_as_actual_transfer(coordinator):
-    coordinator.topics["control/output_priority/state"]="SBU"
-    coordinator.topics["control/bms_return_battery_soc/state"]="95 %"
-    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 L010000 000 1000\r","age_seconds":0}}))
-    with pytest.raises(HomeAssistantError,match="actual Line"):
-        await coordinator._async_verify_source("SBU",timeout=0)
-
-
-async def test_stale_precommand_battery_mode_is_not_transfer_proof(coordinator):
+def start_transfer(coordinator,value="SBU",**updates):
     import time
-    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 B010000 000 1000\r","age_seconds":20}}))
-    with pytest.raises(HomeAssistantError,match="not verified"):
-        await coordinator._async_verify_source("SBU",not_before=time.time(),timeout=0)
-    await coordinator._async_verify_source("SBU",timeout=0)
+    coordinator.source_transfer={"value":value,"not_before":None,"deadline":time.time()+720,**updates}
 
 
-async def test_automatic_same_preference_checks_actual_mode_and_latches_failure(coordinator):
+async def test_stored_sbu_waits_without_fault_or_losing_reserve(coordinator):
     coordinator.topics["control/output_priority/state"]="SBU"
-    with (patch.object(coordinator,"_async_verify_source",side_effect=HomeAssistantError("Actual mode still Line")) as verify,
-          patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish):
-        with pytest.raises(HomeAssistantError,match="still Line"):
-            await coordinator.async_control("output_priority","SBU",automatic=True)
+    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 L010000 000 1000\r","age_seconds":0}}))
+    start_transfer(coordinator)
+    coordinator.recompute()
+    assert coordinator.source_transfer and coordinator.command_error is None
+    assert "Waiting for inverter transfer" in coordinator.data["command_result"]
+    assert coordinator.data["reserve_soc"] is not None
+    assert coordinator.data["mode"]=="Line"
+
+
+async def test_stale_precommand_mode_cannot_complete_transfer(coordinator):
+    import time
+    start_transfer(coordinator,not_before=time.time())
+    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 B010000 000 1000\r","age_seconds":20}}))
+    coordinator.recompute()
+    assert coordinator.source_transfer
+    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 B010000 000 1000\r","age_seconds":0}}))
+    coordinator.recompute()
+    assert coordinator.source_transfer is None
+    assert coordinator.transfer_status=="Battery operation verified"
+
+
+async def test_automatic_same_preference_observes_without_retransmit(coordinator):
+    coordinator.topics["control/output_priority/state"]="SBU"
+    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 L010000 000 1000\r","age_seconds":0}}))
+    with patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish:
+        await coordinator.async_control("output_priority","SBU",automatic=True)
         publish.assert_not_called()
-        verify.assert_awaited_once()
-    assert coordinator.command_error
+    assert coordinator.source_transfer and coordinator.command_error is None
+
+
+async def test_late_transfer_after_old_timeout_is_verified(coordinator):
+    import time
+    start_transfer(coordinator,deadline=time.time()+100)
+    coordinator.recompute()
+    assert coordinator.source_transfer is None and coordinator.command_error is None
+    assert coordinator.transfer_status=="Battery operation verified"
+
+
+async def test_transfer_expiry_latches_without_retry_and_keeps_measurements(coordinator):
+    import time
+    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 L010000 000 1000\r","age_seconds":0}}))
+    start_transfer(coordinator,deadline=time.time()-1)
+    with patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish:
+        coordinator.recompute()
+        publish.assert_not_called()
+    assert "after 12 minutes" in coordinator.command_error
+    assert coordinator.source_transfer is None
+    assert coordinator.data["reserve_soc"] is not None
+
+
+async def test_restart_restores_original_transfer_deadline_and_hold(coordinator):
+    import time
+    start_transfer(coordinator)
+    coordinator.hold_until=time.time()+3600
+    coordinator.last_switch=time.time()-200
+    saved=coordinator._saved_state()
+    restored=BatteryCoordinator(coordinator.hass,coordinator.entry)
+    restored._restore_state(saved)
+    assert restored.source_transfer==coordinator.source_transfer
+    assert restored.hold_until==coordinator.hold_until
+    assert restored.last_switch==coordinator.last_switch
+    assert restored.command_error is None
+    with patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish:
+        restored.recompute()  # Retained/absent telemetry cannot complete a transfer.
+        publish.assert_not_called()
+    assert restored.source_transfer
+    await restored.async_close()
+
+
+async def test_restart_interrupted_write_is_not_replayed(coordinator):
+    coordinator._restore_state({"source_intent":{"value":"SBU","charging":"Solar only"}})
+    assert "interrupted by restart" in coordinator.command_error
+    assert coordinator.source_transfer is None
+    with patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish:
+        with pytest.raises(HomeAssistantError,match="not ready"):
+            await coordinator.async_control("output_priority","SBU")
+        publish.assert_not_called()
+
+
+async def test_pending_transfer_blocks_automatic_rewrites(coordinator):
+    start_transfer(coordinator)
+    coordinator.topics["control/charger_priority/attributes"]={"allowed_values":["Solar only (utility charging disabled)"]}
+    with patch.object(coordinator,"async_control",new_callable=AsyncMock) as control:
+        await coordinator.async_source("SBU",automatic=True)
+        control.assert_not_awaited()
+
+
+async def test_external_priority_change_cancels_old_observation(coordinator):
+    start_transfer(coordinator)
+    coordinator._message(message("control/output_priority/state","SBU"))
+    assert coordinator.source_transfer is None
+    assert coordinator.hold_until>0
 
 
 async def test_battery_action_disables_grid_charging_before_source_change(coordinator):
@@ -395,5 +469,36 @@ async def test_battery_mode_still_charging_without_pv_is_not_verified_discharge(
     coordinator.topics["telemetry/pv_power"]="0"
     import time
     coordinator.received["telemetry/pv_power"]=time.time()
-    with pytest.raises(HomeAssistantError,match="not verified"):
-        await coordinator._async_verify_source("SBU",timeout=0)
+    start_transfer(coordinator)
+    coordinator.recompute()
+    assert coordinator.source_transfer and coordinator.command_error is None
+
+
+async def test_source_intent_durably_saved_before_writes(coordinator):
+    import asyncio
+    coordinator.topics["control/charger_priority/attributes"]={"allowed_values":["Solar only (utility charging disabled)"]}
+    writes=[]
+    async def saved(value):
+        from copy import deepcopy
+        writes.append(deepcopy(value))
+    async def interrupted(*args,**kwargs):
+        assert writes[-1]["source_intent"]["value"]=="SBU"
+        raise asyncio.CancelledError
+    with (patch.object(coordinator.store,"async_save",side_effect=saved),
+          patch.object(coordinator,"async_control",side_effect=interrupted)):
+        with pytest.raises(asyncio.CancelledError):
+            await coordinator.async_source("SBU")
+    assert coordinator.source_intent["value"]=="SBU"
+
+
+async def test_completed_transaction_durably_saves_observation(coordinator):
+    import time
+    coordinator.topics["control/charger_priority/attributes"]={"allowed_values":["Solar only (utility charging disabled)"]}
+    async def control(key,*args,**kwargs):
+        if key=="output_priority": start_transfer(coordinator,deadline=time.time()+720)
+    with (patch.object(coordinator.store,"async_save",new_callable=AsyncMock) as save,
+          patch.object(coordinator,"async_control",side_effect=control)):
+        await coordinator.async_source("SBU")
+        assert save.await_count==2
+        assert save.call_args.args[0]["source_intent"] is None
+        assert save.call_args.args[0]["source_transfer"]["value"]=="SBU"
