@@ -62,6 +62,8 @@ For a manual install, copy `custom_components/home_battery` into `/config/custom
 
 Scheduling starts **disabled**. Observe the recommendations first. Confirm that the selected meter measures the actual critical loads and that **SUB starts grid charging** and **SBU supplies those loads from battery** on your inverter. Enable the two commissioning switches, then Automatic scheduling.
 
+**Commission the hardware recovery threshold:** in lithium/BMS mode, program 40 can hold the inverter on utility even after SBU is stored. Set its return-to-battery SOC below the SOC where the controller should resume discharge, while keeping program 39 and all BMS protections appropriate for the battery. The tested site uses a 20% hardware grid-transfer floor and a 25% recovery threshold; this is a site policy, not a universal battery recommendation. The integration verifies a fresh actual Battery/Line mode after each source action and reports a fault if transfer does not occur. ACK/readback alone is insufficient.
+
 Only source preference is automatically changed. BMS thresholds, MOSFETs, charge current, timers, and output settings are never changed by the scheduler. Manual controls pause scheduling for the configured hold. Failed/uncertain commands latch a fault and stop automatic writes until deliberately acknowledged with a ready bridge.
 
 After reaching the reserve floor, the planner requires recovery to five SOC points above that floor (capped at the charge target) before returning from SUB to SBU. This hysteresis and the five-minute cooldown avoid rapid switching near the reserve boundary.

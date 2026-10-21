@@ -33,6 +33,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.settings={key:entry.options.get(key,value) for key,value in DEFAULTS.items()}
         self.sources=dict(entry.data)|dict(entry.options)
         self.data={}
+        self.transfer_status=""
         self.attributes={}
         self.topics={}
         self.received={}
@@ -295,7 +296,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                   overnight_price=rates["Super off-peak"] if rates else None,
                   price_status="Manual prices" if self.settings["price_source"]=="Manual prices" else "Published PSEG estimate" if rates else "Rates unavailable / review needed",
                   scheduler_status="Fault latched" if self.command_error else "Observe only" if not self.settings["automatic_enabled"] else "Manual hold" if time.time()<self.hold_until else "Automatic",
-                  command_result=self.command_error or self.topics.get("last_result",{}).get("status","No command"),
+                  command_result=self.command_error or self.transfer_status or self.topics.get("last_result",{}).get("status","No command"),
                   bridge_status=self.topics.get("status",{}).get("status","unavailable"))
         data["estimated_savings_total"]=self.ledger["avoided"]-self.ledger["charging"]-self.ledger["wear"]
         for kind,key in (("day",now.strftime("%Y-%m-%d")),("month",now.strftime("%Y-%m")),("year",now.strftime("%Y"))):
@@ -414,24 +415,51 @@ class BatteryCoordinator(DataUpdateCoordinator):
         if not self.fresh_topic("status") or self.topics.get("status",{}).get("status")!="ready" or self.command_error:
             raise HomeAssistantError("Bridge is not ready, or a command fault is latched")
         if self.lock.locked(): raise HomeAssistantError("Another command is awaiting verification")
-        if automatic and self.topics.get(f"control/{key}/state")==value: return
         async with self.lock:
+            already=automatic and self.topics.get(f"control/{key}/state")==value
             self.pending=self.hass.loop.create_future();self.pending_key=key;self.pending_value=value;self.command_time=time.time()
+            self.transfer_status="Requesting source preference" if key=="output_priority" else ""
+            self.recompute()
             try:
-                await mqtt.async_publish(self.hass,self.sources["mqtt_root"]+f"/control/{key}/set",value,qos=0,retain=False)
-                await asyncio.wait_for(self.pending,50)
-                # Await the subsequent confirmed state publication, not an optimistic value.
-                for _ in range(12):
-                    if self.topics.get(f"control/{key}/state")==value: break
-                    await asyncio.sleep(.5)
-                else: raise HomeAssistantError("Acknowledgement arrived without matching settings readback")
+                if not already:
+                    await mqtt.async_publish(self.hass,self.sources["mqtt_root"]+f"/control/{key}/set",value,qos=0,retain=False)
+                    await asyncio.wait_for(self.pending,50)
+                    for _ in range(12):
+                        if self.topics.get(f"control/{key}/state")==value: break
+                        await asyncio.sleep(.5)
+                    else: raise HomeAssistantError("Acknowledgement arrived without matching settings readback")
+                if key=="output_priority" and value in {"SBU","SUB"}:
+                    self.transfer_status="Checking actual battery operation" if value=="SBU" else "Checking actual utility operation"
+                    self.recompute()
+                    await self._async_verify_source(value,not_before=None if already else self.command_time)
+                    self.transfer_status="Battery operation verified" if value=="SBU" else "Utility operation verified"
                 self.last_switch=time.time()
                 if not automatic: self.hold_until=time.time()+self.settings["manual_override_minutes"]*60
             except (TimeoutError,HomeAssistantError) as err:
                 self.command_error=str(err) or "Command verification timed out"
+                self.transfer_status=""
                 raise HomeAssistantError(self.command_error) from err
             finally:
+                if self.pending and not self.pending.done(): self.pending.cancel()
                 self.pending=None;self.pending_key=None;self.pending_value=None;self.save();self.recompute()
+
+    async def _async_verify_source(self,value,not_before=None,timeout=75):
+        """A stored preference is not proof of power transfer. Never retry writes."""
+        expected="Battery" if value=="SBU" else "Line"
+        deadline=self.hass.loop.time()+timeout
+        while True:
+            if self.stopped: raise HomeAssistantError("Integration unloaded while verifying source transfer")
+            d=self.measurements()
+            raw=self.topics.get("raw_readings",{}).get("HSTS",{})
+            age=numeric(raw.get("age_seconds"))
+            sampled=self.received.get("raw_readings",0)-(age if age is not None else 999999)
+            if d["fresh"] and d["healthy"] and d["mode"]==expected and (not_before is None or sampled>=not_before):
+                return
+            if self.hass.loop.time()>=deadline: break
+            await asyncio.sleep(1)
+        recovery=self.topics.get("control/bms_return_battery_soc/state","unknown")
+        detail=f"; battery SOC {d['soc']}%, return-to-battery threshold {recovery}" if value=="SBU" else ""
+        raise HomeAssistantError(f"{value} preference stored, but {expected} operation was not verified (actual {d['mode']}{detail}). Automatic writes paused; no retry sent.")
 
     async def async_close(self):
         self.stopped=True

@@ -108,6 +108,7 @@ async def test_control_waits_for_result_and_confirmed_state(coordinator):
         assert args[1]=="lab/inverter/control/output_priority/set"
         assert args[2]=="SBU" and kwargs["retain"] is False and kwargs["qos"]==0
         coordinator._message(message("control/output_priority/state","SBU"))
+        coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 B010000 000 1000\r","age_seconds":0}}))
         coordinator._message(message("last_result",{"control":"output_priority","status":"verified","timestamp":datetime.now(timezone.utc).isoformat()}))
     with patch("custom_components.home_battery.coordinator.mqtt.async_publish",side_effect=publish) as mocked:
         await coordinator.async_control("output_priority","SBU")
@@ -281,6 +282,7 @@ async def test_mqtt_burst_queues_one_ui_refresh(coordinator):
 async def test_manual_same_value_still_verified_by_bridge(coordinator):
     coordinator.topics["control/output_priority/state"]="SBU"
     async def publish(*args,**kwargs):
+        coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 B010000 000 1000\r","age_seconds":0}}))
         coordinator._message(message("last_result",{"control":"output_priority","status":"verified_no_change","timestamp":datetime.now(timezone.utc).isoformat()}))
     with patch("custom_components.home_battery.coordinator.mqtt.async_publish",side_effect=publish) as publish:
         await coordinator.async_control("output_priority","SBU")
@@ -331,3 +333,29 @@ async def test_recorder_profile_requires_all_hours_and_converts_kw(coordinator):
     with patch("homeassistant.components.recorder.get_instance",return_value=SimpleNamespace(async_add_executor_job=executor)):
         await coordinator.fetch_context(now)
     assert coordinator.load_profile==[]
+
+
+async def test_stored_sbu_does_not_count_as_actual_transfer(coordinator):
+    coordinator.topics["control/output_priority/state"]="SBU"
+    coordinator.topics["control/bms_return_battery_soc/state"]="95 %"
+    with pytest.raises(HomeAssistantError,match="actual Line"):
+        await coordinator._async_verify_source("SBU",timeout=0)
+
+
+async def test_stale_precommand_battery_mode_is_not_transfer_proof(coordinator):
+    import time
+    coordinator._message(message("raw_readings",{"HSTS":{"ascii":"(00 B010000 000 1000\r","age_seconds":20}}))
+    with pytest.raises(HomeAssistantError,match="not verified"):
+        await coordinator._async_verify_source("SBU",not_before=time.time(),timeout=0)
+    await coordinator._async_verify_source("SBU",timeout=0)
+
+
+async def test_automatic_same_preference_checks_actual_mode_and_latches_failure(coordinator):
+    coordinator.topics["control/output_priority/state"]="SBU"
+    with (patch.object(coordinator,"_async_verify_source",side_effect=HomeAssistantError("Actual mode still Line")) as verify,
+          patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish):
+        with pytest.raises(HomeAssistantError,match="still Line"):
+            await coordinator.async_control("output_priority","SBU",automatic=True)
+        publish.assert_not_called()
+        verify.assert_awaited_once()
+    assert coordinator.command_error

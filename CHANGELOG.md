@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+- Verify fresh actual inverter operating mode after SUB/SBU commands, including an unchanged preference. A stored setting alone no longer counts as a transfer.
+- Show transfer progress and latch an actionable fault if the requested mode does not occur, with no automatic command retries.
+- Document commissioning of the hardware return-to-battery SOC threshold before enabling source scheduling.
+
 ## 1.2.0
 
 - Keep current battery percentage, outage reserve and runtime together on Overview and Backup.
