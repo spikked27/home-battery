@@ -1,6 +1,6 @@
 """Public contracts and validated local planning settings."""
 DOMAIN = "home_battery"
-VERSION = "1.3.2"
+VERSION = "1.3.3"
 PLATFORMS = ["sensor","binary_sensor","select","number","switch","button"]
 DEFAULTS = {
     "capacity_kwh":5.2,"backup_hours":2,"minimum_reserve":20,"storm_reserve":90,
@@ -10,7 +10,7 @@ DEFAULTS = {
     "charge_cap_a":30,"ac_budget_a":32,"freshness_seconds":90,
     "planning_goal":"Save money","weather_policy":"Automatic advice",
     "price_source":"PSEG Rate 195","automatic_enabled":False,"storm_override":False,
-    "commissioned":False,"switching_confirmed":False,"manual_override_minutes":120,
+    "commissioned":False,"test_load_mode":False,"switching_confirmed":False,"manual_override_minutes":120,
     "storm_wind_mph":30,"storm_gust_mph":40,
     "manual_super_rate":.12852,"manual_off_rate":.2321,"manual_peak_rate":.518057,
 }
@@ -43,6 +43,7 @@ SELECTS = {"planning_goal":["Save money","Backup first"],
            "weather_policy":["Automatic advice","Manual reserve"],
            "price_source":["PSEG Rate 195","Manual prices"]}
 SWITCHES = {"automatic_enabled":"Automatic scheduling","storm_override":"Manual storm reserve",
+            "test_load_mode":"Allow scheduling with a test load",
             "commissioned":"Critical-load meter commissioned","switching_confirmed":"SUB charging and SBU supply confirmed"}
 PSEG_URL = "https://www.psegliny.com/aboutpseglongisland/ratesandtariffs/rateinformation"
 PSEG_BOOK = "https://www.psegliny.com/aboutpseglongisland/ratesandtariffs/-/media/A0FDA80A6FE44A45973922422E86BD9E.ashx"

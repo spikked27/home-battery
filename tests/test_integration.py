@@ -534,3 +534,49 @@ async def test_restart_grace_is_bounded_when_telemetry_never_returns(coordinator
     coordinator.recompute()
     assert coordinator.source_transfer is None
     assert coordinator.command_error
+
+
+async def test_test_load_scheduling_requires_verified_transitions(coordinator):
+    coordinator.settings["test_load_mode"]=True
+    with pytest.raises(HomeAssistantError,match="Confirm"):
+        await coordinator.async_setting("automatic_enabled",True)
+    coordinator.settings["switching_confirmed"]=True
+    with patch.object(coordinator.hass.config_entries,"async_update_entry") as update:
+        await coordinator.async_setting("automatic_enabled",True)
+    assert coordinator.settings["automatic_enabled"]
+    assert not coordinator.settings["commissioned"]
+    assert update.call_args.kwargs["options"]["automatic_enabled"] is True
+    coordinator.recompute()
+    assert coordinator.data["scheduler_status"]=="Automatic · test load"
+    assert coordinator.data["savings_mode"]=="Projected"
+    assert coordinator.recorded["avoided"]==0
+
+
+async def test_test_load_scheduler_actuates_without_commissioning(coordinator):
+    import time
+    from custom_components.home_battery.policy import Plan
+    coordinator.settings.update(automatic_enabled=True,test_load_mode=True,switching_confirmed=True,commissioned=False)
+    coordinator.start_time=time.time()-120
+    with (patch.object(coordinator,"fetch_context",new_callable=AsyncMock),
+          patch("custom_components.home_battery.coordinator.make_plan",return_value=Plan("Use battery","Test", "SBU",20,5)),
+          patch.object(coordinator,"async_source",new_callable=AsyncMock) as source):
+        await coordinator.async_tick()
+    source.assert_awaited_once_with("SBU",automatic=True)
+    assert coordinator.recorded["avoided"]==0
+
+
+async def test_removing_last_test_authorization_disables_automation(coordinator):
+    coordinator.settings.update(automatic_enabled=True,test_load_mode=True,switching_confirmed=True,commissioned=False)
+    with patch.object(coordinator.hass.config_entries,"async_update_entry") as update:
+        await coordinator.async_setting("test_load_mode",False)
+    assert not coordinator.settings["automatic_enabled"]
+    assert update.call_args.kwargs["options"]["automatic_enabled"] is False
+
+
+async def test_test_load_mode_does_not_bypass_battery_alarm(coordinator):
+    coordinator.settings.update(test_load_mode=True,switching_confirmed=True)
+    coordinator.hass.states.async_set("sensor.alarms","Cell undervoltage")
+    with patch("custom_components.home_battery.coordinator.mqtt.async_publish") as publish:
+        with pytest.raises(HomeAssistantError,match="healthy"):
+            await coordinator.async_source("SBU",automatic=True)
+    publish.assert_not_called()

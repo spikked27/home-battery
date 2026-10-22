@@ -108,6 +108,6 @@ class HomeBatteryOptions(config_entries.OptionsFlow):
             if user_input.get("load_entity")!=current.get("load_entity") and user_input.get("load_heartbeat_topic")==current.get("load_heartbeat_topic"):
                 user_input=dict(user_input,load_heartbeat_topic="")
             if user_input.get("load_entity")!=current.get("load_entity"):
-                user_input=dict(user_input,commissioned=False,automatic_enabled=False)
+                user_input=dict(user_input,commissioned=False,test_load_mode=False,automatic_enabled=False)
             return self.async_create_entry(title="",data=dict(self.config_entry.options)|user_input)
         return self.async_show_form(step_id="init",data_schema=source_schema(user_input or current),errors=errors)

@@ -57,3 +57,7 @@ assert.equal(Panel.prototype.transferNotice.call({}, {command_result:'Battery op
 const paused=Panel.prototype.transferNotice.call({}, {scheduler_status:'Fault latched'});
 assert(paused.includes('Advanced')&&paused.includes('role="alert"'),'Real faults remain visible with a diagnostic destination');
 console.log('4 transfer-status presentation checks passed');
+
+assert(source.includes("'test_load_mode','commissioned'"),'Backup plan exposes explicit test authorization');
+assert(source.includes('Test-load scheduling is authorized; this meter remains a reference.'),'Test scheduling does not claim that the reference meter is connected');
+console.log('2 test-load authorization presentation checks passed');

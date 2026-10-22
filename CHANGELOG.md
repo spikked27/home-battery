@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.3
+
+- Add explicit automatic scheduling with a test load, independently of meter commissioning. Reference-load savings stay projected.
+- Keep verified source transitions, live telemetry, reserve logic, charging caps and fault handling mandatory in test-load mode.
+- Label test automation and disable scheduling if its authorization is removed or the selected meter changes.
+
 ## 1.3.2
 
 - Repeated taps on a pending source request preserve its deadline without repeating writes.
