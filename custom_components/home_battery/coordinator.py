@@ -11,6 +11,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from homeassistant.components import mqtt
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -161,7 +162,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         value=numeric(state.state)
         if value is not None and unit=="kW": value*=1000
         if value is not None and unit=="Wh": value/=1000
-        if value is not None and unit=="Â°F": value=(value-32)*5/9
+        if value is not None and unit==UnitOfTemperature.FAHRENHEIT: value=(value-32)*5/9
         return value
 
     def measurements(self):
@@ -169,7 +170,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             ("soc","soc_entity",{"%"}),("load_w","load_entity",{"W","kW"}),
             ("charge_w","charge_power_entity",{"W","kW"}),("discharge_w","discharge_power_entity",{"W","kW"}),
             ("voltage","voltage_entity",{"V"}),("current","current_entity",{"A"}),
-            ("temperature","temperature_entity",{"Â°C","Â°F"}),("remaining_ah","remaining_ah_entity",{"Ah"}),
+            ("temperature","temperature_entity",{UnitOfTemperature.CELSIUS,UnitOfTemperature.FAHRENHEIT}),("remaining_ah","remaining_ah_entity",{"Ah"}),
             ("energy_in","energy_in_entity",{"kWh","Wh"}),("energy_out","energy_out_entity",{"kWh","Wh"})]}
         raw=self.topics.get("raw_readings",{})
         mode=raw.get("HSTS",{}).get("ascii","") if isinstance(raw,dict) else ""

@@ -61,3 +61,24 @@ console.log('4 transfer-status presentation checks passed');
 assert(!source.includes('test_load_mode'),'Normal scheduling has no separate test mode');
 assert(source.includes('Scheduling uses this selected meter for reserve and price planning.'),'Reference planning is explained without blocking normal scheduling');
 console.log('2 normal scheduling presentation checks passed');
+
+const helpers=vm.runInNewContext(source+'\n({bucketHistory,mergeHistory})',{HTMLElement:class{},customElements:{define:()=>{}}});
+const shortGap=helpers.bucketHistory([{t:0,v:1},{t:30,v:null},{t:31,v:2},{t:60,v:2}],0,60,1);
+assert.equal(shortGap.filter(r=>r.v!==null).length,2,'A short outage must not erase the valid portions of its bucket');
+assert.equal(shortGap.find(r=>r.v===null).from,30);assert.equal(shortGap.find(r=>r.v===null).to,31);
+assert.equal(shortGap.filter(r=>r.v!==null).reduce((n,r)=>n+r.ms,0),59,'Preserve all measured time around the actual gap');
+const recent=helpers.mergeHistory([{t:0,v:-1.4}],[{t:10000,v:5.9},{t:20000,v:5.9}]);
+assert.equal(recent.at(-1).v,5.9,'Live charging samples extend cached discharging history');
+const charging=Object.assign(Object.create(Panel.prototype),{model:{data:{current:5.9}},currentHistory:[{t:now-86400000,v:-1.4},{t:now-30000,v:-1.4}],liveTrends:{current:[{t:now-20000,v:5.9},{t:now,v:5.9}]}}).currentGraph();
+assert(charging.includes('Charging · 5.9 A'),'Live charge direction must be explicit');
+assert(charging.includes('aria-label="Live reading"'),'Show the current sample even before a full average bucket accumulates');
+const noHistory=Object.assign(Object.create(Panel.prototype),{model:{data:{current:5.9}}}).currentGraph();
+assert(noHistory.includes('Charging · 5.9 A'),'Live charging remains visible when historical data is missing');
+console.log('8 gap precision and live-current checks passed');
+(async()=>{
+ const saved=[{t:now-10000,v:1.4},{t:now,v:1.4}];
+ const offline=Object.assign(Object.create(Panel.prototype),{model:{history_sources:{current:'sensor.current'},entities:{recorded_savings_total:'sensor.money'}},trends:{current:saved},_hass:{states:{},callApi:async()=>{throw Error('offline')},callWS:async()=>({})}});
+ await offline.history();assert.strictEqual(offline.trends.current,saved,'Transient history API failure must preserve the last successful data');
+ assert(offline.historyErrors.current,'History refresh failure remains distinguishable from missing recordings');
+ console.log('2 history refresh recovery checks passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

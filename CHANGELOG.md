@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.5
+
+- Fix battery temperature unit recognition and Fahrenheit-to-Celsius conversion.
+- Preserve valid chart intervals around short telemetry outages instead of blanking their entire average buckets.
+- Extend recorded graphs with live samples, refresh history every minute, and show explicit charging/discharging state plus a live endpoint.
+- Keep cached history on transient API errors while labeling refresh failures; preserve genuine unknown intervals.
+
 ## 1.3.4
 
 - Make normal automatic scheduling independent of meter commissioning, with no separate test mode.

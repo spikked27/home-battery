@@ -579,3 +579,22 @@ async def test_uncommissioned_meter_does_not_bypass_battery_alarm(coordinator):
         with pytest.raises(HomeAssistantError,match="healthy"):
             await coordinator.async_source("SBU",automatic=True)
     publish.assert_not_called()
+
+
+@pytest.mark.parametrize(("value","unit","expected"),[(66.2,"\u00b0F",19),(19,"\u00b0C",19),(0,"\u00b0C",0)])
+async def test_bms_temperature_units_are_read_and_converted(coordinator,value,unit,expected):
+    coordinator.sources["temperature_entity"]="sensor.temperature"
+    coordinator.hass.states.async_set("sensor.temperature",value,{"unit_of_measurement":unit})
+    assert coordinator.measurements()["temperature"]==pytest.approx(expected)
+
+
+async def test_unchanged_temperature_remains_valid_with_battery_heartbeat(coordinator):
+    import time
+    coordinator.sources.update(temperature_entity="sensor.temperature",battery_heartbeat_topic="bms/state/voltage")
+    coordinator.hass.states.async_set("sensor.temperature",66.2,{"unit_of_measurement":"\u00b0F"})
+    clock=time.time()+200
+    coordinator.source_seen["battery_heartbeat_topic"]=clock
+    with patch("custom_components.home_battery.coordinator.time.time",return_value=clock):
+        assert coordinator.measurements()["temperature"]==pytest.approx(19)
+        coordinator.hass.states.async_set("sensor.temperature","unavailable",{"unit_of_measurement":"\u00b0F"})
+        assert coordinator.measurements()["temperature"] is None
