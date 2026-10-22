@@ -314,7 +314,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                   tariff=period,weather_mode=weather_mode,storm=storm,current_price=rates[period] if rates else None,
                   overnight_price=rates["Super off-peak"] if rates else None,
                   price_status="Manual prices" if self.settings["price_source"]=="Manual prices" else "Published PSEG estimate" if rates else "Rates unavailable / review needed",
-                  scheduler_status="Fault latched" if self.command_error else "Observe only" if not self.settings["automatic_enabled"] else "Manual hold" if time.time()<self.hold_until else "Automatic · test load" if self.settings["test_load_mode"] and not self.settings["commissioned"] else "Automatic",
+                  scheduler_status="Fault latched" if self.command_error else "Observe only" if not self.settings["automatic_enabled"] else "Manual hold" if time.time()<self.hold_until else "Automatic",
                   command_result=self.command_error or self.transfer_status or self.topics.get("last_result",{}).get("status","No command"),
                   source_transfer=dict(self.source_transfer) if self.source_transfer else None,
                   bridge_status=self.topics.get("status",{}).get("status","unavailable"))
@@ -388,7 +388,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             self.average.append((tick,d["load_w"]))
         while self.average and tick-self.average[0][0]>86400: self.average.popleft()
         self.save();self.recompute()
-        if (self.settings["automatic_enabled"] and (self.settings["commissioned"] or self.settings["test_load_mode"]) and self.settings["switching_confirmed"]
+        if (self.settings["automatic_enabled"] and self.settings["switching_confirmed"]
             and not self.command_error and not self.source_transfer and tick>=self.hold_until and tick-self.start_time>=90
             and tick-self.last_switch>=300 and plan.desired_priority):
             # Only two confirmed source preferences; never change BMS thresholds or output limits.
@@ -410,14 +410,13 @@ class BatteryCoordinator(DataUpdateCoordinator):
         return now.astimezone(ZoneInfo("America/New_York")) if self.settings["price_source"]=="PSEG Rate 195" else now
 
     async def async_setting(self,key,value):
-        if key=="automatic_enabled" and value and not ((self.settings["commissioned"] or self.settings["test_load_mode"]) and self.settings["switching_confirmed"]):
-            raise HomeAssistantError("Confirm both source transitions and either the critical-load meter or explicit test-load scheduling before enabling scheduling")
+        if key=="automatic_enabled" and value and not self.settings["switching_confirmed"]:
+            raise HomeAssistantError("Confirm both source transitions before enabling scheduling")
         self.settings[key]=value
         changed={key:value}
-        if key in {"commissioned","test_load_mode","switching_confirmed"} and not value:
-            if not self.settings["switching_confirmed"] or not (self.settings["commissioned"] or self.settings["test_load_mode"]):
-                self.settings["automatic_enabled"]=False
-                changed["automatic_enabled"]=False
+        if key=="switching_confirmed" and not value:
+            self.settings["automatic_enabled"]=False
+            changed["automatic_enabled"]=False
         self.hass.config_entries.async_update_entry(self.entry,options=dict(self.entry.options)|changed)
         self.previous=None
         self.recompute()

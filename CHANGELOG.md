@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.4
+
+- Make normal automatic scheduling independent of meter commissioning, with no separate test mode.
+- Keep the selected reference load for reserve and price planning, and retain projected savings until a connected-panel meter is commissioned.
+- Preserve verified source transitions, live telemetry, charge ceilings, fault handling and restart recovery.
+
 ## 1.3.3
 
 - Add explicit automatic scheduling with a test load, independently of meter commissioning. Reference-load savings stay projected.
