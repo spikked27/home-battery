@@ -58,6 +58,8 @@ Requires Home Assistant 2026.3 or newer for bundled integration/HACS brand asset
 
 For a manual install, copy `custom_components/home_battery` into `/config/custom_components/` and restart. HACS custom-repository installation does not imply inclusion in HACS's default catalog.
 
+The Overview energy diagram follows the inverter's actual operating mode and fresh measured battery/solar power. Its inverter node shows measured AC output; the selected reference or connected-panel meter is displayed separately and drives planning. Battery DC power includes inverter consumption, so it need not match AC output. Utility availability alone does not activate the utility-supply arrow. Charging arrows point into the battery, and stale readings do not animate a path.
+
 ## Commission scheduling
 
 Scheduling starts **disabled**. Confirm that **SUB starts grid charging** and **SBU supplies the inverter output from battery**, then enable the source-transition confirmation and Automatic scheduling. Scheduling uses the selected load meter for reserve and price planning; it does not require that meter to be commissioned as the connected panel. When using a reference meter, reserve/runtime estimates reflect that reference demand and savings remain projections. Only mark the meter commissioned when it measures the inverter-fed critical loads. Selecting a different meter disables scheduling for review; turning off source-transition confirmation also disables scheduling.

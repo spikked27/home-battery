@@ -6,3 +6,11 @@ main{padding:16px 24px}h2{font-size:20px;margin:12px 0}h3{font-size:17px}p{line-
 /* Fit every label inside power-flow nodes on narrow screens. */
 .flow{height:270px}.node{height:122px;gap:4px}.node.battery{top:140px}.node small{max-width:96%;line-height:1.2}.node strong{line-height:1.1}.node>span{font-size:13px}
 @media(max-width:750px){.flow{height:265px}.node{height:118px;gap:4px}.node.battery{top:135px}.node strong{font-size:23px}.node small{font-size:10px}}
+
+/* Energy arrows terminate in the space outside nodes so their heads stay visible. */
+.flow .route{stroke-width:2}.flow .gridactive{stroke:#60a5fa}.flow .batactive{stroke:#fbbf24}.flow .chargeactive,.flow .solaractive{stroke:#2dd4bf}
+.flow .gridactive,.flow .batactive,.flow .chargeactive,.flow .solaractive{stroke-width:3;stroke-dasharray:7 6;animation:energy-travel 1s linear infinite}
+.flow .node.solar{left:0;top:140px;color:#5eead4}.flow .node small{padding:0 3px}.flow .node strong{font-size:clamp(17px,2.6vw,27px)}
+@keyframes energy-travel{to{stroke-dashoffset:-26}}
+@media(max-width:750px){.flow .node.solar{top:135px}.flow .node strong{font-size:20px}}
+@media(prefers-reduced-motion:reduce){.flow .route{animation:none;stroke-dasharray:none}}

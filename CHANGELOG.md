@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.6
+
+- Show verified inverter energy paths independently of reference-meter commissioning, with separate inverter AC output and planning-meter readings.
+- Add explicit colored arrowheads, directional animation and solar input when measured; keep charging direction correct and suppress active paths on stale data.
+- Clarify control names, disable unavailable controls, validate number input, and keep weather-tab scheduler/transfer status live without restarting radar.
+- Preserve unknown cell difference as unavailable and distinguish local energy integration from BMS counters.
+
 ## 1.3.5
 
 - Fix battery temperature unit recognition and Fahrenheit-to-Celsius conversion.
