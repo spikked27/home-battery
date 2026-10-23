@@ -386,6 +386,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
 
     async def _async_tick(self,_now=None):
         if self.stopped: return
+        # Local charge inhibition must not wait for tariff/weather HTTP requests.
+        await self._async_inhibit_charging(self.measurements())
         now=self.local_now()
         await self.fetch_context(now)
         if self.stopped: return

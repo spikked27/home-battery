@@ -622,6 +622,7 @@ async def test_target_stop_ignores_manual_hold_and_disabled_scheduler(coordinato
 
 async def test_charge_inhibit_does_not_switch_output_or_clear_fault(coordinator):
     _,off=charge_modes(coordinator)
+    coordinator._message(message('raw_readings',{'HSTS':{'ascii':'(00 L010000 000 1000\r','age_seconds':0}}))
     coordinator.command_error='Existing unrelated write fault'
     start_transfer(coordinator)
     original=dict(coordinator.source_transfer)
