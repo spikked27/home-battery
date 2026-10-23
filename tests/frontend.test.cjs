@@ -62,6 +62,14 @@ assert(!source.includes('test_load_mode'),'Normal scheduling has no separate tes
 assert(source.includes('Scheduling uses this selected meter for reserve and price planning.'),'Reference planning is explained without blocking normal scheduling');
 console.log('2 normal scheduling presentation checks passed');
 
+const chargeHeld=Panel.prototype.transferNotice.call({}, {utility_charging_blocked:true,charge_guard_status:'Charge target reached',has_bms_alarm:false});
+assert(chargeHeld.includes('Utility charging paused')&&chargeHeld.includes('role="status"'),'Target stop is a normal state, not an error');
+assert(chargeHeld.includes('Load power source is unchanged'),'Charge stop is distinguished from load transfer');
+const protectionHeld=Panel.prototype.transferNotice.call({}, {utility_charging_blocked:true,charge_guard_status:'BMS alarm',has_bms_alarm:true});
+assert(protectionHeld.includes('role="alert"'),'BMS protection stays visible');
+assert(!source.includes('Charge target (model assumption)'),'The implemented charge stop is no longer described as advisory');
+console.log('4 charging-safeguard presentation checks passed');
+
 const helpers=vm.runInNewContext(source+'\n({bucketHistory,mergeHistory})',{HTMLElement:class{},customElements:{define:()=>{}}});
 const shortGap=helpers.bucketHistory([{t:0,v:1},{t:30,v:null},{t:31,v:2},{t:60,v:2}],0,60,1);
 assert.equal(shortGap.filter(r=>r.v!==null).length,2,'A short outage must not erase the valid portions of its bucket');

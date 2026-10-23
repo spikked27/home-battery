@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.7
+
+- Stop utility charging at the configured SOC target, optional per-cell soft ceiling, or BMS/inverter alarm without changing load source. A hold on manual actions or scheduling does not defeat charge inhibition.
+- Persist target/voltage latches across restarts. Require five SOC points / 50 mV of recovery and three minutes of clear readings before permitting recharge; do not replay interrupted source writes.
+- Hold on grid without charging when saving energy for peak or when charging is uneconomical. Manual and scheduled charging requests respect the same guard.
+- Report precise Daly alarm codes, payload and sample time. Only a fresh SOC-high level-one warning with valid cells below the configured ceiling can permit discharge; all other alarms continue to pause source changes.
+- Add a visible charging-safeguard explanation. Do not reset SOC, alter BMS thresholds or force MOSFETs on. Utility-charge supervision requires HA/MQTT and cannot inhibit PV charging.
+
 ## 1.3.6
 
 - Show verified inverter energy paths independently of reference-meter commissioning, with separate inverter AC output and planning-meter readings.

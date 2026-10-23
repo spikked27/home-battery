@@ -35,6 +35,7 @@ SENSORS={
  "tariff":("Electricity price window",None,None,None),"mode":("Actual power source",None,None,None),
  "weather_mode":("Weather reserve mode",None,None,None),"price_status":("Price source",None,None,None),
  "scheduler_status":("Scheduler status",None,None,None),"alarms":("Battery alarms",None,None,None),
+ "charge_guard_status":("Charging safeguard",None,None,None),
  "bridge_status":("Bridge status",None,None,None),"command_result":("Last command result",None,None,None),
  "inverter_status_code":("Raw inverter status code",None,None,None),
  "weather_alert_count":("Active NWS alerts",None,None,None),

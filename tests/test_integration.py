@@ -598,3 +598,107 @@ async def test_unchanged_temperature_remains_valid_with_battery_heartbeat(coordi
         assert coordinator.measurements()["temperature"]==pytest.approx(19)
         coordinator.hass.states.async_set("sensor.temperature","unavailable",{"unit_of_measurement":"\u00b0F"})
         assert coordinator.measurements()["temperature"] is None
+
+
+def charge_modes(coordinator):
+    from custom_components.home_battery.charge_guard import CHARGE_ON,CHARGE_OFF
+    coordinator.topics['control/charger_priority/attributes']={'allowed_values':[CHARGE_ON,CHARGE_OFF]}
+    coordinator.topics['control/charger_priority/state']=CHARGE_ON
+    coordinator.topics['control/utility_charge_current/state']='9 A'
+    coordinator.topics['control/total_charge_current/state']='30 A'
+    return CHARGE_ON,CHARGE_OFF
+
+
+async def test_target_stop_ignores_manual_hold_and_disabled_scheduler(coordinator):
+    import time
+    _,off=charge_modes(coordinator)
+    coordinator.hass.states.async_set('sensor.soc',100,{'unit_of_measurement':'%'})
+    coordinator.hold_until=time.time()+7200
+    coordinator.settings['automatic_enabled']=False
+    with patch.object(coordinator,'async_control',new_callable=AsyncMock) as control:
+        await coordinator._async_inhibit_charging(coordinator.measurements())
+    control.assert_awaited_once_with('charger_priority',off,automatic=True,charge_inhibit=True)
+
+
+async def test_charge_inhibit_does_not_switch_output_or_clear_fault(coordinator):
+    _,off=charge_modes(coordinator)
+    coordinator.command_error='Existing unrelated write fault'
+    start_transfer(coordinator)
+    original=dict(coordinator.source_transfer)
+    async def publish(*args,**kwargs):
+        assert args[1].endswith('/charger_priority/set') and args[2]==off
+        coordinator._message(message('control/charger_priority/state',off))
+        coordinator._message(message('last_result',{'control':'charger_priority','status':'verified','timestamp':datetime.now(timezone.utc).isoformat()}))
+    with patch('custom_components.home_battery.coordinator.mqtt.async_publish',side_effect=publish) as publish:
+        await coordinator.async_control('charger_priority',off,automatic=True,charge_inhibit=True)
+    publish.assert_called_once()
+    assert coordinator.command_error=='Existing unrelated write fault'
+    assert coordinator.source_transfer==original
+    assert coordinator.last_switch==0
+
+
+async def test_inhibit_failure_is_bounded_and_persistent(coordinator):
+    charge_modes(coordinator)
+    coordinator.hass.states.async_set('sensor.soc',100,{'unit_of_measurement':'%'})
+    with patch.object(coordinator,'async_control',new_callable=AsyncMock,side_effect=HomeAssistantError('No readback')) as control:
+        await coordinator._async_inhibit_charging(coordinator.measurements())
+        await coordinator._async_inhibit_charging(coordinator.measurements())
+    assert control.await_count==1 and coordinator.guard_stop_failed
+    restored=BatteryCoordinator(coordinator.hass,coordinator.entry)
+    restored._restore_state(coordinator._saved_state())
+    assert restored.guard_stop_failed and restored.charge_guard.target_latched
+    await restored.async_close()
+
+
+async def test_direct_charge_enable_rejected_above_target(coordinator):
+    on,_=charge_modes(coordinator)
+    coordinator.hass.states.async_set('sensor.soc',100,{'unit_of_measurement':'%'})
+    with patch('custom_components.home_battery.coordinator.mqtt.async_publish') as publish:
+        with pytest.raises(HomeAssistantError,match='Utility charging blocked'):
+            await coordinator.async_control('charger_priority',on)
+        publish.assert_not_called()
+
+
+async def test_grid_at_target_does_not_enable_charging(coordinator):
+    _,off=charge_modes(coordinator)
+    coordinator.hass.states.async_set('sensor.soc',100,{'unit_of_measurement':'%'})
+    with patch.object(coordinator,'async_control',new_callable=AsyncMock) as control:
+        await coordinator.async_source('SUB',automatic=True)
+    assert [c.args for c in control.await_args_list]==[('charger_priority',off),('output_priority','SUB')]
+
+
+async def test_grid_hold_does_not_top_up_unnecessarily(coordinator):
+    _,off=charge_modes(coordinator)
+    with patch.object(coordinator,'async_control',new_callable=AsyncMock) as control:
+        await coordinator.async_source('SUB',automatic=True,allow_charging=False)
+    assert control.await_args_list[0].args==('charger_priority',off)
+
+
+@pytest.mark.parametrize('codes,valid', [(['soc_high_l1'],True),(['soc_high_l2'],False),(['cell_high_l2'],False),(['soc_high_l1','cell_high_l1'],False),(['byte_7_bit_0'],False)])
+async def test_only_exact_fresh_soc_warning_can_allow_discharge(coordinator,codes,valid):
+    coordinator.settings['charge_cell_ceiling']=4.12
+    coordinator.sources['cell_entities']=['sensor.cell']
+    coordinator.hass.states.async_set('sensor.cell',4.05,{'unit_of_measurement':'V'})
+    coordinator.hass.states.async_set('sensor.alarms','BMS warning',{'decoder_version':1,'alarm_codes':codes,'sampled_at':datetime.now(timezone.utc).isoformat()})
+    d=coordinator.measurements()
+    assert d['healthy']==valid
+    assert d['has_bms_alarm']
+    assert coordinator.charge_guard.evaluate(d,coordinator.settings,0)
+
+
+async def test_soc_warning_not_accepted_from_old_or_missing_details(coordinator):
+    from datetime import timedelta
+    coordinator.settings['charge_cell_ceiling']=4.12
+    coordinator.sources['cell_entities']=['sensor.cell']
+    coordinator.hass.states.async_set('sensor.cell',4.05,{'unit_of_measurement':'V'})
+    coordinator.hass.states.async_set('sensor.alarms','SOC high',{'decoder_version':1,'alarm_codes':['soc_high_l1'],'sampled_at':(datetime.now(timezone.utc)-timedelta(minutes=2)).isoformat()})
+    assert not coordinator.measurements()['healthy']
+    coordinator.hass.states.async_set('sensor.alarms','SOC high')
+    assert not coordinator.measurements()['healthy']
+
+
+async def test_inhibit_flag_cannot_bypass_fault_to_enable_charge(coordinator):
+    on,_=charge_modes(coordinator)
+    coordinator.command_error='Fault'
+    with pytest.raises(HomeAssistantError,match='only permits'):
+        await coordinator.async_control('charger_priority',on,charge_inhibit=True)

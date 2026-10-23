@@ -21,6 +21,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULTS, DOMAIN, PSEG_URL
+from .charge_guard import ChargeGuard, CHARGE_OFF, CHARGE_ON
 from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window
 from .projection import project_savings
 
@@ -41,6 +42,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.transfer_status=""
         self.source_transfer=None
         self.source_intent=None
+        self.charge_guard=ChargeGuard()
+        self.guard_stop_failed=False
         self.source_lock=asyncio.Lock()
         self.attributes={}
         self.topics={}
@@ -104,6 +107,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.command_error=saved.get("command_error")
         self.source_transfer=saved.get("source_transfer")
         self.source_intent=saved.get("source_intent")
+        self.charge_guard=ChargeGuard(saved.get("charge_guard"))
+        self.guard_stop_failed=saved.get("guard_stop_failed",False)
         if self.source_intent:
             self.source_transfer=None
             self.command_error="Source change interrupted by restart; inspect actual source and stored settings in Advanced before acknowledging. No commands replayed."
@@ -183,8 +188,17 @@ class BatteryCoordinator(DataUpdateCoordinator):
         d["alarms"]=alarms.state if alarms else "unavailable"
         alarm_age=time.time()-self.source_seen.get("battery_heartbeat_topic",0) if self.sources.get("battery_heartbeat_topic") else time.time()-getattr(alarms,"last_reported",alarms.last_updated).timestamp() if alarms else 999
         alarm_fresh=alarms and 0<=alarm_age<self.settings["freshness_seconds"]
+        d["has_bms_alarm"]=not bool(alarm_fresh and d["alarms"].lower() in {"no alarms","none","ok","0","off"})
+        details=alarms.attributes if alarms else {}
+        sampled=dt_util.parse_datetime(details.get("sampled_at",""))
+        codes=details.get("alarm_codes")
+        d["alarm_codes"]=codes if isinstance(codes,list) and all(isinstance(c,str) for c in codes) else None
+        if sampled and 0<=time.time()-sampled.timestamp()<60 and d["alarm_codes"]:
+            d["has_bms_alarm"]=True
+        d["soc_warning_only"]=bool(alarm_fresh and sampled and 0<=time.time()-sampled.timestamp()<60
+            and details.get("decoder_version")==1 and d["alarm_codes"]==["soc_high_l1"])
         status=self.topics.get("status",{})
-        d["healthy"]=bool(alarm_fresh and d["alarms"].lower() in {"no alarms","none","ok","0","off"}
+        d["healthy"]=bool(alarm_fresh and (not d["has_bms_alarm"] or d["soc_warning_only"])
                           and isinstance(status,dict) and status.get("status") in {"ready","write_in_progress"}
                           and not status.get("fault") and d["inverter_status_code"]=="00")
         d["fresh"]=bool(self.fresh_topic("status") and self.fresh_topic("raw_readings")
@@ -201,6 +215,12 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 cells.append(None)
             else: cells.append(numeric(state.state))
         d["cells"]=cells
+        if d["soc_warning_only"]:
+            # Only a freshly decoded SOC warning can permit discharge. Never
+            # reinterpret voltage/current/temperature faults from translated text.
+            ceiling=self.settings["charge_cell_ceiling"]
+            if not ceiling or not cells or any(v is None or not 0<v<ceiling for v in cells):
+                d["healthy"]=False
         for key in ("grid_voltage","grid_frequency","output_voltage","output_frequency","output_apparent_power","output_power","output_load","battery_voltage","battery_soc","battery_charge_current","battery_discharge_current","pv_voltage","pv_current","pv_power","inverter_temperature"):
             topic="telemetry/"+key
             d["inverter_"+key]=numeric(self.topics.get(topic)) if self.fresh_topic(topic) else None
@@ -310,6 +330,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         plan=make_plan(now,d,self.settings,rates,storm)
         period=price_window(now,self.settings)
         extreme=cell_extremes(d["cells"])
+        charge_reason=self.charge_guard.evaluate(d,self.settings,time.time())
         data=dict(d,**(extreme or {}),plan=plan.decision,reason=plan.reason,reserve_soc=plan.reserve_soc,
                   runtime_hours=plan.runtime_hours,economic_margin=plan.economic_margin,
                   tariff=period,weather_mode=weather_mode,storm=storm,current_price=rates[period] if rates else None,
@@ -318,7 +339,14 @@ class BatteryCoordinator(DataUpdateCoordinator):
                   scheduler_status="Fault latched" if self.command_error else "Observe only" if not self.settings["automatic_enabled"] else "Manual hold" if time.time()<self.hold_until else "Automatic",
                   command_result=self.command_error or self.transfer_status or self.topics.get("last_result",{}).get("status","No command"),
                   source_transfer=dict(self.source_transfer) if self.source_transfer else None,
-                  bridge_status=self.topics.get("status",{}).get("status","unavailable"))
+                  bridge_status=self.topics.get("status",{}).get("status","unavailable"),
+                  charge_guard_status=charge_reason or "Utility charging permitted below target",
+                  utility_charging_blocked=bool(charge_reason))
+        self.attributes["charge_guard_status"]={"latches":self.charge_guard.saved(),
+            "cell_ceiling_v":self.settings["charge_cell_ceiling"],"resume_soc_gap":5,
+            "resume_cell_gap_v":.05,"recovery_seconds":180,
+            "scope":"Utility charging only; HA/MQTT required; does not replace BMS or inhibit PV"}
+        self.attributes["alarms"]={"codes":d["alarm_codes"],"soc_warning_only":d["soc_warning_only"]}
         data["estimated_savings_total"]=self.ledger["avoided"]-self.ledger["charging"]-self.ledger["wear"]
         for kind,key in (("day",now.strftime("%Y-%m-%d")),("month",now.strftime("%Y-%m")),("year",now.strftime("%Y"))):
             totals=self.ledger["periods"].get(key,{})
@@ -362,6 +390,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
         await self.fetch_context(now)
         if self.stopped: return
         d,plan,rates,period=self.recompute()
+        # Stop permission is independent of manual holds, automatic scheduling,
+        # economics and source-transition cooldown. Never switch output to do it.
+        await self._async_inhibit_charging(d)
         tick=time.time()
         current=money_rates(d,self.settings,rates[period] if rates else None)
         if self.previous and current and 0<tick-self.last_tick<=90:
@@ -394,7 +425,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
             and tick-self.last_switch>=300 and plan.desired_priority):
             # Only two confirmed source preferences; never change BMS thresholds or output limits.
             try:
-                await self.async_source(plan.desired_priority,automatic=True)
+                if plan.desired_priority=="SUB":
+                    await self.async_source("SUB",automatic=True,allow_charging=plan.decision in {"Recharge","Recover reserve","Charge","Keep ready"})
+                else:
+                    await self.async_source(plan.desired_priority,automatic=True)
             except HomeAssistantError as err:
                 LOGGER.error("Scheduling stopped after command failure: %s",err)
 
@@ -404,7 +438,21 @@ class BatteryCoordinator(DataUpdateCoordinator):
     def _saved_state(self):
         return {"ledger":self.ledger,"recorded":self.recorded,"hold_until":self.hold_until,
                 "command_error":self.command_error,"source_transfer":self.source_transfer,
-                "source_intent":self.source_intent,"last_switch":self.last_switch}
+                "source_intent":self.source_intent,"last_switch":self.last_switch,
+                "charge_guard":self.charge_guard.saved(),"guard_stop_failed":self.guard_stop_failed}
+
+    async def _async_inhibit_charging(self,d):
+        reason=self.charge_guard.evaluate(d,self.settings,time.time())
+        if not reason or self.topics.get("control/charger_priority/state")==CHARGE_OFF: return
+        if not d["fresh"] and time.time()-self.start_time<90: return
+        if self.guard_stop_failed or self.lock.locked() or self.source_lock.locked(): return
+        if not self.fresh_topic("status") or self.topics.get("status",{}).get("status")!="ready": return
+        try:
+            await self.async_control("charger_priority",CHARGE_OFF,automatic=True,charge_inhibit=True)
+        except HomeAssistantError as err:
+            self.guard_stop_failed=True
+            LOGGER.error("Utility-charge inhibition failed; no automatic retries: %s",err)
+            await self.store.async_save(self._saved_state())
 
     def local_now(self):
         now=dt_util.now()
@@ -422,7 +470,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.previous=None
         self.recompute()
 
-    async def async_source(self,value,automatic=False):
+    async def async_source(self,value,automatic=False,allow_charging=True):
         """Coordinate charging permission and output preference; verify real transfer."""
         if value not in {"SBU","SUB"}: raise HomeAssistantError("Only confirmed battery/grid source actions are supported")
         if self.source_lock.locked(): raise HomeAssistantError("Another source transition is in progress")
@@ -438,7 +486,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 if amps is None or amps>min(30,self.settings["charge_cap_a"]):
                     raise HomeAssistantError("Read or lower charging limits before permitting utility charging")
         options=self.topics.get("control/charger_priority/attributes",{}).get("allowed_values",[])
-        candidates=("Solar only (utility charging disabled)","Code 02 (label unconfirmed)") if value=="SBU" else ("SNU (solar + utility)",)
+        blocked=self.charge_guard.evaluate(d,self.settings,time.time())
+        candidates=(CHARGE_OFF,"Code 02 (label unconfirmed)") if value=="SBU" or blocked or not allow_charging else (CHARGE_ON,)
         charging=next((v for v in candidates if v in options),None)
         if charging is None: raise HomeAssistantError("Bridge does not advertise the commissioned charging-source mode")
         if automatic and self.source_transfer: return
@@ -458,7 +507,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
             self.source_intent=None
             await self.store.async_save(self._saved_state())
 
-    async def async_control(self,key,value,automatic=False,source_transaction=False):
+    async def async_control(self,key,value,automatic=False,source_transaction=False,charge_inhibit=False):
+        inhibit=charge_inhibit and key=="charger_priority" and value==CHARGE_OFF
+        if charge_inhibit and not inhibit: raise HomeAssistantError("Inhibit path only permits utility charging off")
         if self.source_lock.locked() and not source_transaction:
             raise HomeAssistantError("A coordinated source transition is in progress")
         if self.stopped: raise HomeAssistantError("Integration is unloaded; commands are disabled")
@@ -468,6 +519,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
         metadata=self.topics.get(f"control/{key}/attributes",{})
         options=metadata.get("allowed_values",[])
         if value not in options: raise HomeAssistantError("Value not advertised by the verified bridge")
+        if key=="charger_priority" and value!=CHARGE_OFF:
+            reason=self.charge_guard.evaluate(self.measurements(),self.settings,time.time())
+            if reason: raise HomeAssistantError("Utility charging blocked: "+reason)
         if key in {"utility_charge_current","total_charge_current"}:
             number=numeric(value.split()[0])
             if number is None or number>min(30,self.settings["charge_cap_a"]):
@@ -478,16 +532,16 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 amps=numeric(current.split()[0]) if current else None
                 if amps is None or amps>min(30,self.settings["charge_cap_a"]):
                     raise HomeAssistantError("Read or lower battery charging limits before grid charging")
-            if automatic and self.topics.get("control/charger_priority/state")!="SNU (solar + utility)":
-                raise HomeAssistantError("Automatic charging requires the confirmed SNU source mode")
-        if not self.fresh_topic("status") or self.topics.get("status",{}).get("status")!="ready" or self.command_error:
+            if automatic and self.topics.get("control/charger_priority/state") not in {CHARGE_ON,CHARGE_OFF}:
+                raise HomeAssistantError("Automatic grid operation requires a confirmed charging-source mode")
+        if not self.fresh_topic("status") or self.topics.get("status",{}).get("status")!="ready" or (self.command_error and not inhibit):
             raise HomeAssistantError("Bridge is not ready, or a command fault is latched")
         if self.lock.locked(): raise HomeAssistantError("Another command is awaiting verification")
         async with self.lock:
-            if key in {"output_priority","charger_priority"}: self.source_transfer=None
+            if key=="output_priority" or (key=="charger_priority" and not inhibit): self.source_transfer=None
             already=automatic and self.topics.get(f"control/{key}/state")==value
             self.pending=self.hass.loop.create_future();self.pending_key=key;self.pending_value=value;self.command_time=time.time()
-            self.transfer_status="Requesting source preference" if key=="output_priority" else ""
+            if not inhibit: self.transfer_status="Requesting source preference" if key=="output_priority" else ""
             self.recompute()
             try:
                 if not already:
@@ -503,7 +557,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                     self.source_transfer={"value":value,"not_before":None if already else self.command_time,
                                           "deadline":time.time()+SOURCE_TRANSFER_WINDOW}
                     self._update_source_transfer(self.measurements())
-                self.last_switch=time.time()
+                if not inhibit: self.last_switch=time.time()
                 if not automatic: self.hold_until=time.time()+self.settings["manual_override_minutes"]*60
             except (TimeoutError,HomeAssistantError) as err:
                 self.command_error=str(err) or "Command verification timed out"

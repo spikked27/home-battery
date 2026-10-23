@@ -1,10 +1,10 @@
 """Public contracts and validated local planning settings."""
 DOMAIN = "home_battery"
-VERSION = "1.3.6"
+VERSION = "1.3.7"
 PLATFORMS = ["sensor","binary_sensor","select","number","switch","button"]
 DEFAULTS = {
     "capacity_kwh":5.2,"backup_hours":2,"minimum_reserve":20,"storm_reserve":90,
-    "charge_target":95,"reserve_margin":20,"discharge_efficiency":90,
+    "charge_target":95,"charge_cell_ceiling":0,"reserve_margin":20,"discharge_efficiency":90,
     "charge_efficiency":90,"overhead_w":45,"wear_cost":0,"minimum_margin":0,
     "charge_start":22,"charge_end":6,"peak_start":15,"peak_end":19,
     "charge_cap_a":30,"ac_budget_a":32,"freshness_seconds":90,
@@ -20,6 +20,7 @@ NUMBERS = {
     "minimum_reserve":("Minimum battery reserve",5,100,1,"%"),
     "storm_reserve":("Storm reserve",5,100,1,"%"),
     "charge_target":("Charge target",10,100,1,"%"),
+    "charge_cell_ceiling":("Stop utility charging at cell voltage (0 disables)",0,4.25,.01,"V"),
     "reserve_margin":("Backup estimate margin",0,100,1,"%"),
     "discharge_efficiency":("DC to AC efficiency estimate",50,100,1,"%"),
     "charge_efficiency":("Charging efficiency estimate",50,100,1,"%"),

@@ -96,7 +96,7 @@ def make_plan(now, data, settings, rates, storm=False):
     charging_hours=(start<=hour<end if start<end else hour>=start or hour<end)
     if charging_hours:
         return Plan("Charge" if soc < settings["charge_target"] else "Target reached",
-                    "Low-price charge window" if soc < settings["charge_target"] else "Charging target reached; neutral grid mode is not established",
+                    "Low-price charge window" if soc < settings["charge_target"] else "Charge target reached; use utility with utility charging disabled",
                     "SUB",reserve,runtime)
     if not rates:
         return Plan("Hold reserve","Electricity prices unavailable; economics cannot be assessed", "SUB",reserve,runtime)
