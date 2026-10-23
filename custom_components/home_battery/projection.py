@@ -1,6 +1,6 @@
 """Reference-load what-if simulation. Never writes controls or the savings ledger."""
 from datetime import datetime, timedelta
-from .policy import make_plan, numeric, price_window
+from .policy import plan_with_reserve_hold, numeric, price_window
 
 
 def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, storm=False, weekly_profiles=None):
@@ -23,6 +23,7 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
     energy=cap*settings["minimum_reserve"]/100
     priority="SUB"
     charge_latched=False
+    reserve_hold=False
     # Full weeks keep weekday/weekend weighting; no starting energy is free income.
     start=now.replace(hour=0,minute=0,second=0,microsecond=0)-timedelta(days=now.weekday())
     baseline=operating=wear=shifted=0.
@@ -35,7 +36,7 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
         data={"soc":energy/cap*100,"load_w":load,"average_load_w":sum(profile)/24,
               "charge_w":0.,"discharge_w":demand if priority=="SBU" else 0.,
               "grid_voltage":120.,"fresh":True,"healthy":True,"mode":"Battery" if priority=="SBU" else "Line","priority":priority}
-        plan=make_plan(when,data,settings,rates,storm)
+        plan,reserve_hold=plan_with_reserve_hold(when,data,settings,rates,storm,reserve_hold)
         if energy>=target-1e-9: charge_latched=True
         if energy<=target-cap*.05: charge_latched=False
         priority=plan.desired_priority or "SUB"

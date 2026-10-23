@@ -4,7 +4,7 @@ This is a rolling estimate, never a command queue. All energy is DC-side.
 """
 from datetime import datetime
 import math
-from .policy import make_plan, numeric, price_window, planning_profile
+from .policy import plan_with_reserve_hold, numeric, price_window, planning_profile
 from .charge_guard import ChargeGuard
 
 
@@ -32,6 +32,7 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
     # the controller. Cell readings stay fixed; no future voltage recovery is invented.
     preview_guard=ChargeGuard(guard)
     priority=data.get('priority','SUB')
+    reserve_hold=bool(data.get('reserve_hold'))
     idle_dc=max(0,data['discharge_w']-data['charge_w']) if data.get('mode')=='Line' else 0
     stamp=now.timestamp()
     while stamp<result['end']:
@@ -49,7 +50,7 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
             uncertainty=max(0,error_w)*planning_profile(settings)['forecast_error_multiplier']
             projected['peak_forecast_wh']=sum(((v+uncertainty)/(settings['discharge_efficiency']/100)+settings['overhead_w'])*max(0,min(h+1,end)-max(h,start)) for h,v in enumerate(weekly[str(when.weekday())]))
         else: projected['peak_forecast_wh']=None
-        plan=make_plan(when,projected,settings,rates,storm)
+        plan,reserve_hold=plan_with_reserve_hold(when,projected,settings,rates,storm,reserve_hold)
         if plan.desired_priority is None:
             return result|{'segments':[],'points':[],'message':plan.reason}
         priority=plan.desired_priority

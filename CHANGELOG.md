@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0
+
+- Stop recycling expensive reserve-recovery energy. Once the daily battery allocation reaches the reserve, retain utility until the next configured low-price charging window. Restore a genuinely deficient backup reserve when needed; preserve that energy for backup instead of immediately discharging it again. Persist this daily reserve hold across restart.
+- Apply the same stateful reserve logic to live control, the anticipated timeline and savings projections. Keep reserve floors, storm readiness, charging guard hysteresis, current caps, freshness checks and command safeguards intact.
+- Make disabled automatic scheduling prominent and show modeled costs with and without the battery. Label projected daily/monthly/yearly values as current-price run rates.
+
 ## 1.6.1
 
 - Use an independent copy of the real utility-charge guard in the schedule preview. A cleared historical alarm latch can recover with the SOC latch after the clear-reading period, instead of falsely projecting a whole day without charging. Cell readings remain fixed; unknown future cell-voltage recovery is not invented.

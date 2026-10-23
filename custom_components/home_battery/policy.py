@@ -58,6 +58,12 @@ def price_window(now,settings):
     return tariff_window(now,settings["charge_start"],settings["charge_end"],settings["peak_start"],settings["peak_end"])
 
 
+def in_charge_window(now,settings):
+    hour=now.hour+now.minute/60
+    start,end=settings['charge_start'],settings['charge_end']
+    return start<=hour<end if start<end else hour>=start or hour<end
+
+
 def pseg_rates(now, supply):
     """Published 2026 delivery + monthly supply; not account-specific bill prices."""
     if now.year != 2026 or numeric(supply) is None or not 0 < supply < 1:
@@ -108,18 +114,15 @@ def make_plan(now, data, settings, rates, storm=False):
         return Plan("Keep ready","Reserve needs approach the charge target; use grid", "SUB",reserve,runtime)
     if storm:
         return Plan("Keep ready","Storm reserve advised", "SUB",reserve,runtime)
-    if soc <= reserve:
-        return Plan("Recharge","Battery is at or below the outage reserve", "SUB",reserve,runtime)
-    if data.get("priority")=="SUB" and soc<min(settings["charge_target"],reserve+5):
-        return Plan("Recover reserve","Recover five SOC points above reserve before returning to battery", "SUB",reserve,runtime)
+    if soc < reserve-1e-6:
+        return Plan("Recharge","Battery is below the required outage reserve", "SUB",reserve,runtime)
     window = price_window(now,settings)
-    hour=now.hour+now.minute/60
-    start,end=settings["charge_start"],settings["charge_end"]
-    charging_hours=(start<=hour<end if start<end else hour>=start or hour<end)
-    if charging_hours:
+    if in_charge_window(now,settings):
         return Plan("Charge" if soc < settings["charge_target"] else "Target reached",
                     "Low-price charge window" if soc < settings["charge_target"] else "Charge target reached; use utility with utility charging disabled",
                     "SUB",reserve,runtime)
+    if data.get('reserve_hold') or soc<=reserve+1e-6:
+        return Plan("Hold reserve","Daily battery allocation used; keep utility until the next low-price charging window", "SUB",reserve,runtime)
     if not rates:
         return Plan("Hold reserve","Electricity prices unavailable; economics cannot be assessed", "SUB",reserve,runtime)
     margin = rates[window] - rates["Super off-peak"]*demand/max(load,1)/(settings["charge_efficiency"]/100) - settings["wear_cost"]*demand/max(load,1)
@@ -135,6 +138,17 @@ def make_plan(now, data, settings, rates, storm=False):
         if soc <= needed:
             return Plan("Save for peak","Keep remaining energy for the upcoming peak window","SUB",reserve,runtime,margin)
     return Plan("Use battery","Reserve protected and estimated battery operation is economical","SBU",reserve,runtime,margin)
+
+
+def plan_with_reserve_hold(now,data,settings,rates,storm=False,reserve_hold=False):
+    """Do not re-spend reserve replenished at expensive prices. No I/O."""
+    base=make_plan(now,dict(data,reserve_hold=False),settings,rates,storm)
+    held=reserve_hold
+    if data.get('fresh') and data.get('healthy') and base.reserve_soc is not None and (numeric(data.get('grid_voltage')) or 0)>90:
+        if in_charge_window(now,settings): held=False
+        elif (base.reserve_soc is not None and numeric(data.get('soc')) is not None
+              and data['soc']<=base.reserve_soc+1e-6 and base.decision in {'Recharge','Hold reserve'}): held=True
+    return make_plan(now,dict(data,reserve_hold=held),settings,rates,storm),held
 
 
 def money_rates(data, settings, price):

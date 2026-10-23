@@ -108,6 +108,17 @@ async def test_schedule_preview_reflects_holds_without_sending_commands(hass,coo
         publish.assert_not_called()
 
 
+async def test_daily_reserve_hold_persists_across_restart(coordinator):
+    coordinator.reserve_hold=True
+    saved=coordinator._saved_state()
+    coordinator.reserve_hold=False
+    coordinator._restore_state(saved)
+    assert coordinator.reserve_hold is True
+    with patch.object(coordinator,'local_now',return_value=datetime(2026,10,23,16,tzinfo=timezone.utc)):
+        coordinator.recompute()
+    assert coordinator.attributes['plan']['reserve_hold'] is True
+
+
 async def test_old_preference_survives_restart_and_options_updates(hass,coordinator):
     from custom_components.home_battery import async_options_updated
     hass.config_entries.async_update_entry(coordinator.entry,options={'planning_goal':'Save money','automatic_enabled':True})

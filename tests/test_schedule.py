@@ -78,5 +78,12 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(local_end.hour,23)
     def test_missing_charge_limit_does_not_invent_a_completion_time(self):
         self.assertEqual(preview(self.now,self.data,self.settings,self.rates,None,52)['segments'],[])
+    def test_recovered_reserve_is_held_until_next_cheap_window(self):
+        self.data.update(soc=25,reserve_hold=True,priority='SUB',mode='Line',discharge_w=0,load_w=300,average_load_w=300)
+        result=self.run_preview()
+        before_night=[s for s in result['segments'] if s['start']<self.now.replace(hour=22,minute=0).timestamp()]
+        self.assertTrue(before_night)
+        self.assertTrue(all(s['action']=='utility' for s in before_night))
+        self.assertTrue(any(s['action']=='charge' for s in result['segments']))
 
 if __name__=='__main__': unittest.main()

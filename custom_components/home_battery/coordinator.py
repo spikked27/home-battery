@@ -22,7 +22,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DEFAULTS, DOMAIN, PSEG_URL
 from .charge_guard import ChargeGuard, CHARGE_OFF, CHARGE_ON, high_charge_discharge_allowed
-from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window, normalize_planning_goal, planning_profile
+from .policy import cell_extremes, plan_with_reserve_hold, money_rates, numeric, pseg_rates, price_window, normalize_planning_goal, planning_profile
 from .projection import project_savings
 from .learning import learn_load,HISTORY_DAYS
 from .schedule import preview_schedule
@@ -61,6 +61,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.command_time=0
         self.command_error=None
         self.hold_until=0
+        self.reserve_hold=False
         self.last_switch=0
         self.average=deque(maxlen=2880)
         self.store=Store(hass,1,f"{DOMAIN}.{entry.entry_id}")
@@ -108,6 +109,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.ledger.update(saved.get("ledger",{}))
         self.recorded.update(saved.get("recorded",{}))
         self.hold_until=saved.get("hold_until",0)
+        self.reserve_hold=bool(saved.get('reserve_hold',False))
         self.last_switch=saved.get("last_switch",0)
         self.command_error=saved.get("command_error")
         self.source_transfer=saved.get("source_transfer")
@@ -363,7 +365,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
     def recompute(self):
         now=self.local_now();d=self.measurements();storm,weather_mode=self.storm();rates=self.prices(now)
         self._update_source_transfer(d)
-        plan=make_plan(now,d,self.settings,rates,storm)
+        plan,held=plan_with_reserve_hold(now,d,self.settings,rates,storm,self.reserve_hold)
+        if held!=self.reserve_hold:
+            self.reserve_hold=held;self.save()
+        d['reserve_hold']=held
         period=price_window(now,self.settings)
         extreme=cell_extremes(d["cells"])
         charge_reason=self.charge_guard.evaluate(d,self.settings,time.time())
@@ -416,7 +421,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         data["integrated_energy_in"]=self.ledger["energy_in"];data["integrated_energy_out"]=self.ledger["energy_out"]
         data["weather_alert_count"]=len(self.nws_alerts) if self.sources.get("nws_alert_zone") and time.time()-self.nws_seen<900 else None
         self.attributes["weather_alert_count"]={"events":self.nws_alerts,"last_successful_fetch":self.nws_seen,"source":"National Weather Service"}
-        self.attributes["plan"]=asdict(plan)|{"automatic_switching":self.settings["automatic_enabled"],"assumed_capacity_kwh":self.settings["capacity_kwh"]}
+        self.attributes["plan"]=asdict(plan)|{"automatic_switching":self.settings["automatic_enabled"],"assumed_capacity_kwh":self.settings["capacity_kwh"],"reserve_hold":self.reserve_hold}
         self.attributes["current_price"]={"source_url":PSEG_URL,"month":self.rate_month,"last_fetch":self.last_fetch,"delivery_year":2026,"account_adjustments_included":False}
         self.attributes["highest_cell"]={"positions":extreme["highest_positions"] if extreme else [],"ordering":"Selected source list, left to right"}
         self.attributes["lowest_cell"]={"positions":extreme["lowest_positions"] if extreme else [],"ordering":"Selected source list, left to right"}
@@ -487,7 +492,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         return {"ledger":self.ledger,"recorded":self.recorded,"hold_until":self.hold_until,
                 "command_error":self.command_error,"source_transfer":self.source_transfer,
                 "source_intent":self.source_intent,"last_switch":self.last_switch,
-                "charge_guard":self.charge_guard.saved(),"guard_stop_failed":self.guard_stop_failed}
+                "charge_guard":self.charge_guard.saved(),"guard_stop_failed":self.guard_stop_failed,"reserve_hold":self.reserve_hold}
 
     async def _async_inhibit_charging(self,d):
         reason=self.charge_guard.evaluate(d,self.settings,time.time())

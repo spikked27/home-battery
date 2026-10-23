@@ -175,3 +175,11 @@ assert(timelineCard.includes('scroll horizontally')&&timelineCard.includes('tabi
 const pausedSchedule=timelinePanel.anticipatedSchedule({schedule_preview:{status:'Paused',message:'Manual hold',segments:[]}});
 assert(pausedSchedule.includes('Manual hold')&&!pausedSchedule.includes('Use battery now'),'Never present a paused controller as active');
 console.log('7 anticipated schedule rendering checks passed');
+
+const scheduleOff=Panel.prototype.transferNotice.call({}, {scheduler_status:'Observe only'});
+assert(scheduleOff.includes('Automatic scheduling is off')&&scheduleOff.includes('scheduled source changes will not run'),'Do not confuse a recommendation with an enabled schedule');
+const costPanel=Object.assign(Object.create(Panel.prototype),{field:()=>'',model:{settings:{commissioned:false,capacity_kwh:5.2,charge_target:95},attributes:{projected_savings_day:{baseline_cost_day:1.65,operating_cost_day:1.35,load_kwh_day:7.16,shifted_kwh_day:3.1,charge_limit_a:9}}}});
+const costs=costPanel.savings({reserve_soc:20,projected_savings_day:.3,projected_savings_month:9,projected_savings_year:110,current_price:.518,overnight_price:.128,tariff:'Peak'});
+assert(costs.includes('Cost without battery')&&costs.includes('Cost with battery'),'Explain the purchases behind net savings');
+assert(costs.includes('3.9 kWh DC')&&costs.includes('At current prices'),'Expose the usable energy budget and current-rate assumption');
+console.log('3 savings explanation and disabled-schedule checks passed');

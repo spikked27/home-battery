@@ -90,10 +90,29 @@ class PolicyTests(unittest.TestCase):
         self.d.update(high_charge_recovery=True,soc=10)
         self.assertEqual(self.plan().desired_priority,'SUB')
     def test_reserve_recovery_avoids_chattering(self):
-        self.d.update(priority="SUB",soc=30)
-        self.assertEqual(self.plan().decision,"Recover reserve")
-        self.d["soc"]=34
-        self.assertEqual(self.plan().desired_priority,"SBU")
+        self.d.update(priority="SUB",soc=30,reserve_hold=True)
+        self.assertEqual(self.plan().decision,"Hold reserve")
+        self.d['soc']=34
+        self.assertEqual(self.plan().desired_priority,'SUB')
+    def test_reserve_session_never_recycles_expensive_recovery(self):
+        self.d.update(soc=20,load_w=300,discharge_w=0,priority='SUB')
+        plan,held=p.plan_with_reserve_hold(self.now,self.d,self.settings,self.rates)
+        self.assertTrue(held);self.assertEqual(plan.decision,'Hold reserve')
+        self.d['soc']=19
+        plan,held=p.plan_with_reserve_hold(self.now,self.d,self.settings,self.rates,reserve_hold=held)
+        self.assertEqual(plan.decision,'Recharge')
+        self.d['soc']=25
+        plan,held=p.plan_with_reserve_hold(self.now,self.d,self.settings,self.rates,reserve_hold=held)
+        self.assertTrue(held);self.assertEqual(plan.decision,'Hold reserve')
+        plan,held=p.plan_with_reserve_hold(self.now.replace(hour=23),self.d,self.settings,self.rates,reserve_hold=held)
+        self.assertFalse(held);self.assertEqual(plan.decision,'Charge')
+        self.d['soc']=95
+        plan,held=p.plan_with_reserve_hold(self.now.replace(hour=7),self.d,self.settings,self.rates,reserve_hold=held)
+        self.assertEqual(plan.decision,'Use battery')
+    def test_stale_or_outage_does_not_clear_reserve_hold(self):
+        for change in ({'fresh':False},{'grid_voltage':0},{'soc':float('nan')}):
+            _,held=p.plan_with_reserve_hold(self.now.replace(hour=23),self.d|change,self.settings,self.rates,reserve_hold=True)
+            self.assertTrue(held)
     def test_midnight_window(self):
         for hour in (22,23,0,5):self.assertEqual(p.tariff_window(self.now.replace(hour=hour)),"Super off-peak")
         self.assertEqual(p.tariff_window(self.now.replace(hour=6)),"Off-peak")

@@ -1,6 +1,6 @@
 """Public contracts and validated local planning settings."""
 DOMAIN = "home_battery"
-VERSION = "1.6.1"
+VERSION = "1.7.0"
 PLATFORMS = ["sensor","binary_sensor","select","number","switch","button"]
 DEFAULTS = {
     "learning_history_days":14,
