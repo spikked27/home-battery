@@ -6,9 +6,9 @@ from .policy import make_plan, numeric, price_window
 def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, storm=False):
     """Repeat the observed 24h profile, settle 14 days, then model a week.
 
-    Charging occurs in SUB, including daytime reserve recovery, because a neutral
-    grid-without-charging state is not verified. Charge-target termination and
-    constant monthly prices are explicit modelling assumptions, not device facts.
+    Model the controller's charge permission separately from SUB source choice.
+    SOC/capacity and constant monthly prices remain modelling assumptions; cell
+    limits, protection trips, switching delays and HA outages are not simulated.
     """
     if len(hourly_w)!=24 or any(numeric(v) is None or not 0<=v<=10000 for v in hourly_w):
         return None
@@ -20,6 +20,7 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
     target=cap*settings["charge_target"]/100
     energy=cap*settings["minimum_reserve"]/100
     priority="SUB"
+    charge_latched=False
     # Full weeks keep weekday/weekend weighting; no starting energy is free income.
     start=now.replace(hour=0,minute=0,second=0,microsecond=0)-timedelta(days=now.weekday())
     baseline=operating=wear=shifted=0.
@@ -32,6 +33,8 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
               "charge_w":0.,"discharge_w":demand if priority=="SBU" else 0.,
               "grid_voltage":120.,"fresh":True,"healthy":True,"mode":"Battery" if priority=="SBU" else "Line","priority":priority}
         plan=make_plan(when,data,settings,rates,storm)
+        if energy>=target-1e-9: charge_latched=True
+        if energy<=target-cap*.05: charge_latched=False
         priority=plan.desired_priority or "SUB"
         if step==14*96: starting_energy=energy
         rate=rates[price_window(when,settings)]
@@ -46,7 +49,8 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
         else:
             headroom=max(0,settings["ac_budget_a"]*120-load-settings["overhead_w"])
             watts=min(charge_amps,settings["charge_cap_a"])*pack_voltage
-            charged=min(max(0,target-energy),min(watts,headroom*eta_c)/1000*.25)
+            allow_charge=not charge_latched and plan.decision in {"Recharge","Recover reserve","Charge","Keep ready"}
+            charged=min(max(0,target-energy),min(watts,headroom*eta_c)/1000*.25) if allow_charge else 0
             energy+=charged
             cost=(load+settings["overhead_w"])/1000*.25*rate+charged/eta_c*rate
             delivered=wear_cost=0.
@@ -64,6 +68,7 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
             "charge_limit_a":charge_amps,"model":"Observed 24-hour load repeated; 14-day settling period and 7-day simulation",
             "assumptions":["Current monthly prices held constant; annual value is a run rate, not a tariff forecast",
                 "Configured capacity, efficiencies, idle use and reserve margin",
-                "Grid charging in SUB at the current configured DC current limit",
-                "Charging finishes at the model charge target; hardware termination may differ",
+                "Grid charging only when the planner requests recharge; grid hold does not top up",
+                "Configured DC current, SOC target and five-point recharge hysteresis; SOC accuracy unverified",
+                "Cell limits, protection trips, switching delays and HA outages not simulated",
                 "No solar, outages, battery degradation or changing weather beyond the current reserve state"]}
