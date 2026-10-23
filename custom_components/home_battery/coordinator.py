@@ -21,7 +21,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULTS, DOMAIN, PSEG_URL
-from .charge_guard import ChargeGuard, CHARGE_OFF, CHARGE_ON
+from .charge_guard import ChargeGuard, CHARGE_OFF, CHARGE_ON, high_charge_discharge_allowed
 from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window
 from .projection import project_savings
 
@@ -198,6 +198,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         d["soc_warning_only"]=bool(alarm_fresh and sampled and 0<=time.time()-sampled.timestamp()<60
             and details.get("decoder_version")==1 and d["alarm_codes"]==["soc_high_l1"])
         status=self.topics.get("status",{})
+        d["bridge_ready"]=bool(isinstance(status,dict) and status.get("status") in {"ready","write_in_progress"}
+            and not status.get("fault") and d["inverter_status_code"]=="00")
         d["healthy"]=bool(alarm_fresh and (not d["has_bms_alarm"] or d["soc_warning_only"])
                           and isinstance(status,dict) and status.get("status") in {"ready","write_in_progress"}
                           and not status.get("fault") and d["inverter_status_code"]=="00")
@@ -215,12 +217,17 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 cells.append(None)
             else: cells.append(numeric(state.state))
         d["cells"]=cells
-        if d["soc_warning_only"]:
-            # Only a freshly decoded SOC warning can permit discharge. Never
-            # reinterpret voltage/current/temperature faults from translated text.
-            ceiling=self.settings["charge_cell_ceiling"]
-            if not ceiling or not cells or any(v is None or not 0<v<ceiling for v in cells):
-                d["healthy"]=False
+        d["high_charge_recovery"]=bool(alarm_fresh and sampled and 0<=time.time()-sampled.timestamp()<30
+            and details.get("decoder_version")==1 and high_charge_discharge_allowed(
+                d["alarm_codes"],cells,d["temperature"],self.settings["charge_cell_ceiling"],
+                details.get("discharge_mosfet"),details.get("cell_count")))
+        # Directional permission: charge-side alarms keep charging inhibited,
+        # while BMS-permitted discharge can lower high SOC/voltage. Never clear
+        # the alarm, switch MOSFETs or permit unknown/mixed faults.
+        if d["has_bms_alarm"]:
+            d["healthy"]=bool(d["high_charge_recovery"] and isinstance(status,dict)
+                and status.get("status") in {"ready","write_in_progress"}
+                and not status.get("fault") and d["inverter_status_code"]=="00")
         for key in ("grid_voltage","grid_frequency","output_voltage","output_frequency","output_apparent_power","output_power","output_load","battery_voltage","battery_soc","battery_charge_current","battery_discharge_current","pv_voltage","pv_current","pv_power","inverter_temperature"):
             topic="telemetry/"+key
             d["inverter_"+key]=numeric(self.topics.get(topic)) if self.fresh_topic(topic) else None
@@ -422,9 +429,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
             self.average.append((tick,d["load_w"]))
         while self.average and tick-self.average[0][0]>86400: self.average.popleft()
         self.save();self.recompute()
+        protection_hold=plan.decision=="Protection hold" and (d["mode"]!="Line" or d["priority"]!="SUB")
         if (self.settings["automatic_enabled"] and self.settings["switching_confirmed"]
-            and not self.command_error and not self.source_transfer and tick>=self.hold_until and tick-self.start_time>=90
-            and tick-self.last_switch>=300 and plan.desired_priority):
+            and not self.command_error and plan.desired_priority and (protection_hold or (
+                not self.source_transfer and tick>=self.hold_until and tick-self.start_time>=90 and tick-self.last_switch>=300))):
             # Only two confirmed source preferences; never change BMS thresholds or output limits.
             try:
                 if plan.desired_priority=="SUB":
@@ -481,18 +489,19 @@ class BatteryCoordinator(DataUpdateCoordinator):
         # deadline rather than sending the same preference again.
         if self.source_transfer and self.source_transfer["value"]==value: return
         d=self.measurements()
-        if not d["fresh"] or not d["healthy"]: raise HomeAssistantError("Fresh healthy telemetry is required before source switching")
-        if value=="SUB":
+        safe_grid_hold=value=="SUB" and d.get("bridge_ready") and d.get("has_bms_alarm")
+        if not d["fresh"] or (not d["healthy"] and not safe_grid_hold): raise HomeAssistantError("Fresh healthy telemetry is required before source switching")
+        blocked=self.charge_guard.evaluate(d,self.settings,time.time())
+        if value=="SUB" and allow_charging and not blocked:
             for key in ("utility_charge_current","total_charge_current"):
                 amps=numeric(str(self.topics.get(f"control/{key}/state","")).split(" ")[0])
                 if amps is None or amps>min(30,self.settings["charge_cap_a"]):
                     raise HomeAssistantError("Read or lower charging limits before permitting utility charging")
         options=self.topics.get("control/charger_priority/attributes",{}).get("allowed_values",[])
-        blocked=self.charge_guard.evaluate(d,self.settings,time.time())
         candidates=(CHARGE_OFF,"Code 02 (label unconfirmed)") if value=="SBU" or blocked or not allow_charging else (CHARGE_ON,)
         charging=next((v for v in candidates if v in options),None)
         if charging is None: raise HomeAssistantError("Bridge does not advertise the commissioned charging-source mode")
-        if automatic and self.source_transfer: return
+        if automatic and self.source_transfer and not safe_grid_hold: return
         async with self.source_lock:
             # An explicit new source request supersedes the old observation.
             self.source_transfer=None
@@ -524,11 +533,15 @@ class BatteryCoordinator(DataUpdateCoordinator):
         if key=="charger_priority" and value!=CHARGE_OFF:
             reason=self.charge_guard.evaluate(self.measurements(),self.settings,time.time())
             if reason: raise HomeAssistantError("Utility charging blocked: "+reason)
+            for limit in ("utility_charge_current","total_charge_current"):
+                amps=numeric(str(self.topics.get(f"control/{limit}/state","")).split(" ")[0])
+                if amps is None or amps>min(30,self.settings["charge_cap_a"]):
+                    raise HomeAssistantError("Read or lower charging limits before permitting utility charging")
         if key in {"utility_charge_current","total_charge_current"}:
             number=numeric(value.split()[0])
             if number is None or number>min(30,self.settings["charge_cap_a"]):
                 raise HomeAssistantError("Battery charge ceiling would be exceeded")
-        if key=="output_priority" and value=="SUB":
+        if key=="output_priority" and value=="SUB" and self.topics.get("control/charger_priority/state")!=CHARGE_OFF:
             for limit in ("utility_charge_current","total_charge_current"):
                 current=self.topics.get(f"control/{limit}/state","")
                 amps=numeric(current.split()[0]) if current else None
@@ -579,7 +592,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         sampled=self.received.get("raw_readings",0)-(age if age is not None else 999999)
         pv=d.get("inverter_pv_power")
         charge_ok=expected!="Battery" or pv is None or pv>5 or (d["charge_w"] is not None and d["charge_w"]<=5)
-        if (d["fresh"] and d["healthy"] and charge_ok and d["mode"]==expected
+        mode_permitted=d["healthy"] or (expected=="Line" and d.get("bridge_ready"))
+        if (d["fresh"] and mode_permitted and charge_ok and d["mode"]==expected
             and (transfer["not_before"] is None or sampled>=transfer["not_before"])):
             self.transfer_status=f"{expected if expected=='Battery' else 'Utility'} operation verified"
             self.source_transfer=None

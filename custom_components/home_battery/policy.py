@@ -67,8 +67,6 @@ def make_plan(now, data, settings, rates, storm=False):
     required = ("soc","load_w","discharge_w","charge_w","grid_voltage")
     if any(numeric(data.get(key)) is None for key in required) or not data.get("fresh"):
         return Plan("Paused","Waiting for fresh battery, inverter and load readings",None)
-    if not data.get("healthy"):
-        return Plan("Paused","Battery alarms or bridge fault require attention",None)
     soc, load = data["soc"], max(data["load_w"],data.get("average_load_w",0))
     if not 0 <= soc <= 100 or not 0 <= load <= 10000:
         return Plan("Paused","A measurement is outside its accepted range",None)
@@ -79,9 +77,17 @@ def make_plan(now, data, settings, rates, storm=False):
         reserve = max(reserve,settings["storm_reserve"])
     reserve = min(100,reserve)
     runtime = capacity*soc/100*1000/demand if demand > 0 else None
+    if not data.get("healthy"):
+        if data.get("bridge_ready") and data.get("has_bms_alarm") and data["grid_voltage"]>90:
+            return Plan("Protection hold","Use utility with charging blocked while battery protection needs attention", "SUB",reserve,runtime)
+        return Plan("Paused","Battery alarms or bridge fault require attention",None,reserve,runtime)
     grid = data["grid_voltage"] > 90
     if not grid:
         return Plan("Outage","Utility unavailable; hardware determines backup operation",None,reserve,runtime)
+    if data.get("high_charge_recovery"):
+        if soc<=reserve:
+            return Plan("Hold reserve","High-charge alarm conflicts with outage reserve; utility charging stays blocked", "SUB",reserve,runtime)
+        return Plan("Battery recovery","Charging blocked; BMS permits discharge to recover a high-SOC/voltage alarm", "SBU",reserve,runtime)
     if reserve >= settings["charge_target"]:
         return Plan("Keep ready","Reserve needs approach the charge target; use grid", "SUB",reserve,runtime)
     if storm or settings["planning_goal"] == "Backup first":

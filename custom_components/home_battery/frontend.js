@@ -88,7 +88,7 @@ class HomeBatteryPanel extends HTMLElement {
     catch(e){this.error=e.message||String(e);this.shadowRoot.activeElement?.blur();this.render();}
   }
   transferNotice(d){
-    const guard=d.utility_charging_blocked?`<p role="${d.has_bms_alarm?'alert':'status'}" class="note"><strong>Utility charging paused</strong> · ${esc(d.charge_guard_status)}<br><small>Load power source is unchanged. BMS protection remains active.</small></p>`:'';
+    const guard=d.utility_charging_blocked?`<p role="${d.has_bms_alarm?'alert':'status'}" class="note"><strong>Utility charging paused</strong> · ${esc(d.charge_guard_status)}<br><small>${d.high_charge_recovery?'BMS permits recovery discharge; charging stays off.':'Source control is shown separately; BMS protection remains active.'}</small></p>`:'';
     if(d.source_transfer){
       const target=d.source_transfer.value==='SBU'?'battery':'utility';
       return guard+`<p role="status" class="note">Waiting for inverter transfer · ${esc(d.mode)} → ${target}<br><small>The inverter may take about 10 minutes. Actual source is shown above; no commands are being retried.</small></p>`;

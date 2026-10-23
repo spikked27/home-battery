@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.8
+
+- Fix a high-charge alarm deadlock: block charging while allowing BMS-permitted recovery discharge for isolated high-SOC/cell/pack-voltage flags. Require a fresh explicit BMS discharge permission, all expected cells within a conservative recovery window, temperature, and a ready inverter.
+- Unknown/mixed faults, missing permission or readings, or unsafe recovery values still block battery use. Use available utility with charging disabled for a protection hold; do not override the BMS or reset alarms.
+- Preserve reserve/runtime visibility during protection holds. Keep charge target/cell latches and recharge hysteresis intact, and report recovery separately from ordinary scheduling.
+
 ## 1.3.7
 
 - Stop utility charging at the configured SOC target, optional per-cell soft ceiling, or BMS/inverter alarm without changing load source. A hold on manual actions or scheduling does not defeat charge inhibition.

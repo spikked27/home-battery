@@ -675,12 +675,14 @@ async def test_grid_hold_does_not_top_up_unnecessarily(coordinator):
     assert control.await_args_list[0].args==('charger_priority',off)
 
 
-@pytest.mark.parametrize('codes,valid', [(['soc_high_l1'],True),(['soc_high_l2'],False),(['cell_high_l2'],False),(['soc_high_l1','cell_high_l1'],False),(['byte_7_bit_0'],False)])
-async def test_only_exact_fresh_soc_warning_can_allow_discharge(coordinator,codes,valid):
+@pytest.mark.parametrize('codes,valid', [(['soc_high_l1'],True),(['soc_high_l2'],True),(['cell_high_l2'],True),(['soc_high_l1','cell_high_l1'],True),(['cell_high_l2','byte_1_bit_0'],False),(['byte_7_bit_0'],False)])
+async def test_only_fresh_high_charge_flags_can_allow_recovery(coordinator,codes,valid):
     coordinator.settings['charge_cell_ceiling']=4.12
     coordinator.sources['cell_entities']=['sensor.cell']
+    coordinator.sources['temperature_entity']='sensor.temp'
+    coordinator.hass.states.async_set('sensor.temp',15,{'unit_of_measurement':'°C'})
     coordinator.hass.states.async_set('sensor.cell',4.05,{'unit_of_measurement':'V'})
-    coordinator.hass.states.async_set('sensor.alarms','BMS warning',{'decoder_version':1,'alarm_codes':codes,'sampled_at':datetime.now(timezone.utc).isoformat()})
+    coordinator.hass.states.async_set('sensor.alarms','BMS warning',{'decoder_version':1,'alarm_codes':codes,'sampled_at':datetime.now(timezone.utc).isoformat(),'discharge_mosfet':True,'cell_count':1})
     d=coordinator.measurements()
     assert d['healthy']==valid
     assert d['has_bms_alarm']
@@ -703,3 +705,22 @@ async def test_inhibit_flag_cannot_bypass_fault_to_enable_charge(coordinator):
     coordinator.command_error='Fault'
     with pytest.raises(HomeAssistantError,match='only permits'):
         await coordinator.async_control('charger_priority',on,charge_inhibit=True)
+
+
+async def test_protection_hold_can_use_grid_with_charger_off(coordinator):
+    _,off=charge_modes(coordinator)
+    coordinator.hass.states.async_set('sensor.alarms','Unknown fault')
+    with patch.object(coordinator,'async_control',new_callable=AsyncMock) as control:
+        await coordinator.async_source('SUB',automatic=True,allow_charging=False)
+    assert [c.args for c in control.await_args_list]==[('charger_priority',off),('output_priority','SUB')]
+
+
+async def test_grid_transfer_verifies_with_battery_alarm(coordinator):
+    coordinator.hass.states.async_set('sensor.alarms','Unknown fault')
+    coordinator._message(message('raw_readings',{'HSTS':{'ascii':'(00 L010000 000 1000\r','age_seconds':0}}))
+    start_transfer(coordinator,value='SUB')
+    coordinator.recompute()
+    assert coordinator.source_transfer is None
+    assert coordinator.transfer_status=='Utility operation verified'
+    assert coordinator.data['plan']=='Protection hold'
+    assert coordinator.data['reserve_soc'] is not None

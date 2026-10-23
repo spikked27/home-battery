@@ -8,6 +8,21 @@ from .policy import numeric
 CHARGE_OFF = 'Solar only (utility charging disabled)'
 CHARGE_ON = 'SNU (solar + utility)'
 RECOVERY_SECONDS = 180
+HIGH_CHARGE_CODES = {'soc_high_l1','soc_high_l2','cell_high_l1','cell_high_l2','pack_high_l1','pack_high_l2'}
+
+
+def high_charge_discharge_allowed(codes, cells, temperature, ceiling, discharge_mosfet, expected_cells):
+    """Conservative recovery window, not general battery operating limits.
+
+    A known charge-side alarm never grants permission by itself. Require the
+    BMS's fresh discharge permission and all configured cell/temperature data.
+    """
+    values=[numeric(v) for v in cells]
+    temp=numeric(temperature)
+    return bool(codes and set(codes)<=HIGH_CHARGE_CODES and discharge_mosfet is True
+                and type(expected_cells) is int and expected_cells>0 and len(cells)==expected_cells
+                and ceiling>3.3 and all(v is not None and 3.3<=v<ceiling for v in values)
+                and temp is not None and 0<=temp<=45)
 
 
 class ChargeGuard:

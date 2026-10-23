@@ -40,6 +40,13 @@ class PolicyTests(unittest.TestCase):
     def test_storm_prefers_grid(self):
         plan=p.make_plan(self.now,self.d,self.settings,self.rates,True)
         self.assertEqual(plan.desired_priority,"SUB");self.assertGreaterEqual(plan.reserve_soc,90)
+    def test_high_charge_recovery_can_use_battery(self):
+        self.d.update(high_charge_recovery=True,soc=100)
+        self.assertEqual(self.plan().decision,'Battery recovery')
+        self.assertEqual(self.plan().desired_priority,'SBU')
+    def test_recovery_cannot_spend_outage_reserve(self):
+        self.d.update(high_charge_recovery=True,soc=10)
+        self.assertEqual(self.plan().desired_priority,'SUB')
     def test_reserve_recovery_avoids_chattering(self):
         self.d.update(priority="SUB",soc=30)
         self.assertEqual(self.plan().decision,"Recover reserve")

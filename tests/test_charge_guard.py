@@ -59,4 +59,23 @@ class GuardTests(unittest.TestCase):
         self.d['cells']=[4.06]*14;self.assertTrue(self.evaluate(101))
         self.assertFalse(self.evaluate(281))
 
+class DirectionalRecoveryTests(unittest.TestCase):
+    def permit(self, codes=None, cells=None, temp=15, enabled=True, expected=14):
+        return module.high_charge_discharge_allowed(codes or ['cell_high_l2'],cells or [4.05]*14,temp,4.12,enabled,expected)
+    def test_captured_protection_allows_bms_permitted_discharge(self):
+        self.assertTrue(self.permit())
+    def test_other_faults_block_recovery(self):
+        for code in ['cell_low_l1','pack_low_l2','byte_1_bit_0','byte_2_bit_2','byte_7_bit_0']:
+            self.assertFalse(self.permit(codes=['cell_high_l2',code]))
+    def test_permission_and_all_readings_required(self):
+        self.assertFalse(self.permit(enabled=False))
+        self.assertFalse(self.permit(enabled=None))
+        self.assertFalse(self.permit(expected=15))
+        self.assertFalse(self.permit(cells=[4.05]*13+[None]))
+        self.assertFalse(self.permit(temp=None))
+    def test_conservative_recovery_window(self):
+        for voltage in [3.29,4.12,4.25]:
+            self.assertFalse(self.permit(cells=[voltage]*14))
+        for temp in [-1,46]: self.assertFalse(self.permit(temp=temp))
+
 if __name__=='__main__': unittest.main()
