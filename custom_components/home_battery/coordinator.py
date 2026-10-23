@@ -217,6 +217,16 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 cells.append(None)
             else: cells.append(numeric(state.state))
         d["cells"]=cells
+        # Display-only bounds from the selected cells' BMS readback metadata.
+        # Never infer chemistry or use these UI bounds to control equipment.
+        limits=[]
+        for entity in self.sources.get("cell_entities",[]):
+            state=self.hass.states.get(entity)
+            a=state.attributes if state else {}
+            low=numeric(a.get("cell_protection_low_v"));high=numeric(a.get("cell_protection_high_v"))
+            if low is not None and high is not None and 0<low<high<6:
+                limits.append((low,high))
+        d["cell_voltage_limits"]={"low":limits[0][0],"high":limits[0][1]} if limits and len(limits)==len(cells) and len(set(limits))==1 else None
         d["high_charge_recovery"]=bool(alarm_fresh and sampled and 0<=time.time()-sampled.timestamp()<30
             and details.get("decoder_version")==1 and high_charge_discharge_allowed(
                 d["alarm_codes"],cells,d["temperature"],self.settings["charge_cell_ceiling"],

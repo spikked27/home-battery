@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.9
+
+- Inspect history charts by hovering, touching, or using arrow keys. Show recorded values with units, cursor time and sample time; preserve missing-data gaps instead of interpolating values.
+- Fix cell-group bars to the configured BMS low/high protection voltages. Read matching limit metadata from the selected cell sensors; never infer chemistry, autoscale around readings or alter equipment settings for display.
+- Identify out-of-limit cell readings in red without expanding the axis. Preserve existing branding, scheduling and charging safeguards.
+
 ## 1.3.8
 
 - Fix a high-charge alarm deadlock: block charging while allowing BMS-permitted recovery discharge for isolated high-SOC/cell/pack-voltage flags. Require a fresh explicit BMS discharge permission, all expected cells within a conservative recovery window, temperature, and a ready inverter.

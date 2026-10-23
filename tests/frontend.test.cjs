@@ -35,7 +35,7 @@ assert.equal(bucket[0].v,200,'Bucket averages must weight time, not sample count
 assert.equal(bucket[0].lo,100);assert.equal(bucket[0].hi,300);
 const reserve=Panel.prototype.statusStrip.call({}, {soc:33,reserve_soc:20,runtime_hours:4.5});
 assert(reserve.includes('33%')&&reserve.includes('20%'),'Current battery and reserve must appear together');
-const cells=Panel.prototype.cellChart.call({},{cells:[3.5,3.55,3.6]});
+const cells=Panel.prototype.cellChart.call({},{cells:[3.5,3.55,3.6],cell_voltage_limits:{low:2.75,high:4.2}});
 assert.equal((cells.match(/data-cell="/g)||[]).length,3,'Every cell gets its own vertical bar');
 assert(cells.includes('All bars share'),'Comparison must disclose the common scale');
 console.log('4 visual hierarchy and bucket checks passed');
@@ -111,3 +111,20 @@ assert(unknownHealth.includes('Waiting for live readings')&&!unknownHealth.inclu
 const stylesheet=fs.readFileSync('custom_components/home_battery/charts.css','utf8');
 assert(stylesheet.includes('prefers-reduced-motion')&&stylesheet.includes('energy-travel'),'Animated directional flow respects reduced-motion preferences');
 console.log('10 whole-dashboard state and control checks passed');
+
+const lookup=vm.runInNewContext(source+'\nhistoryAt',{HTMLElement:class{},customElements:{define:()=>{}}});
+const events=[{t:100,v:1.234},{t:200,v:null},{t:300,v:-5.678}];
+assert.equal(lookup(events,99),null,'No invented data before the first recording');
+assert.equal(lookup(events,150).v,1.234,'Hover uses recorded precision, not a bucket average');
+assert.equal(lookup(events,250),null,'Do not bridge unavailable intervals');
+assert.equal(lookup(events,300).v,-5.678,'Keep signed discharge values');
+assert(graph.includes('data-chart="spread"')&&graph.includes('chart-tooltip'),'History charts expose pointer inspection');
+assert(graph.includes('tabindex="0"'),'History inspection is keyboard accessible');
+const bounds={low:2.75,high:4.2};
+const fixed1=Panel.prototype.cellChart.call({},{cells:[3.5,3.55],cell_voltage_limits:bounds});
+const fixed2=Panel.prototype.cellChart.call({},{cells:[4.01,4.02],cell_voltage_limits:bounds});
+assert(fixed1.includes('2.75–4.2 V')&&fixed2.includes('2.75–4.2 V'),'Cell scale remains fixed as measured voltages change');
+assert(!fixed1.includes('data-cell-scale'),'No automatic or arbitrary detail scale');
+assert(Panel.prototype.cellChart.call({},{cells:[4.3],cell_voltage_limits:bounds}).includes('Outside BMS limits'),'Out-of-range readings are identified without expanding the scale');
+assert(Panel.prototype.cellChart.call({},{cells:[4.0]}).includes('Waiting for configured BMS'),'Do not guess voltage limits for an unknown chemistry');
+console.log('10 hover and fixed-voltage-scale checks passed');

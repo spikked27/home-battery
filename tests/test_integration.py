@@ -42,6 +42,21 @@ async def test_source_units_are_validated(hass):
     assert validate_sources(hass,{"load_entity":"sensor.kw"})=={}
 
 
+async def test_cell_chart_bounds_require_matching_selected_bms_metadata(hass,coordinator):
+    coordinator.sources["cell_entities"]=["sensor.cell_a","sensor.cell_b"]
+    attrs={"unit_of_measurement":"V","cell_protection_low_v":2.75,"cell_protection_high_v":4.2}
+    for entity in coordinator.sources["cell_entities"]:
+        hass.states.async_set(entity,4.0,attrs)
+    assert coordinator.measurements()["cell_voltage_limits"]=={"low":2.75,"high":4.2}
+    hass.states.async_set("sensor.cell_b",4.01,attrs|{"cell_protection_high_v":3.65})
+    assert coordinator.measurements()["cell_voltage_limits"] is None
+    hass.states.async_set("sensor.cell_b",4.01,{"unit_of_measurement":"V"})
+    assert coordinator.measurements()["cell_voltage_limits"] is None
+    for entity in coordinator.sources["cell_entities"]:
+        hass.states.async_set(entity,4.0,attrs|{"cell_protection_low_v":4.3})
+    assert coordinator.measurements()["cell_voltage_limits"] is None
+
+
 async def test_discovery_preserves_renames_and_numeric_cell_order(hass):
     from custom_components.home_battery.discovery import suggested_sources
     entries={str(i):SimpleNamespace(platform="mqtt",disabled_by=None,device_id="battery",unique_id=unique,entity_id=entity)

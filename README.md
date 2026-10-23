@@ -1,5 +1,7 @@
 # Home Battery
 
+History charts support hover, touch and keyboard inspection of recorded values and timestamps. Cell bars use fixed BMS protection limits from the selected cell sensors' `cell_protection_low_v` and `cell_protection_high_v` attributes. Those attributes must agree across the selected groups; the panel does not guess a chemistry or automatically enlarge voltage differences. This display metadata never changes BMS protections.
+
 <img src="https://raw.githubusercontent.com/spikked27/home-battery/main/custom_components/home_battery/brand/logo.png" width="112" alt="Home Battery logo">
 
 Local Home Assistant energy management for a critical-load battery system: readable controls, outage reserve, weather readiness, time-of-use scheduling and estimated net savings.
