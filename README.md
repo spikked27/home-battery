@@ -30,13 +30,13 @@ Learning refreshes every fifteen minutes with recency-weighted weekday/weekend p
 
 ## Projections and recorded savings
 
-Before panel commissioning, Savings models a repeated 24-hour reference-load profile from HA Recorder hourly mean power. It requires all 24 hours and fresh telemetry. Charging is limited by the current inverter settings and assumes grid charging whenever SUB is selected, including reserve recovery outside cheap hours. Capacity, efficiency, idle use, reserve and model charge target are assumptions. Monthly and annual values are run rates at current prices, not forecasts or measured savings. Negative values mean the model costs more than buying the load directly from the grid.
+Before panel commissioning, Savings models recorded hourly demand from the selected history period, using learned weekday/weekend profiles when available. It requires all 24 hours and fresh telemetry. Charging is limited by the current inverter settings and assumes grid charging whenever SUB is selected, including reserve recovery outside cheap hours. Capacity, efficiency, idle use, reserve and model charge target are assumptions. Monthly and annual values are run rates at current prices, not forecasts or measured savings. Negative values mean the model costs more than buying the load directly from the grid.
 
 After selecting and commissioning the connected critical-load meter, the main display switches to recorded operation with estimated tariff costs. This separate ledger starts prospectively; reference projections and legacy estimates are excluded. Changing the meter disables scheduling and clears its commissioning. Physical panel connection is not automatically detected.
 
 Weather includes regional radar from RainViewer and OpenStreetMap, rendered with bundled Leaflet 1.9.4. Map tiles require internet and include provider attribution. The center uses HA location rounded to a tenth of a degree, with no home marker. Radar is informational; official alert freshness and the configured weather policy govern reserve advice. Provider availability is not guaranteed.
 
-Charts use thin time-weighted mean lines with faint min/max ranges; missing intervals stay blank. Cell bars share one labelled voltage scale, with a full-scale toggle to distinguish small differences from their absolute magnitude.
+Charts use thin time-weighted mean lines with faint min/max ranges; missing intervals stay blank. Cell bars use the configured BMS low/high protection voltages as a fixed scale, so small differences are not visually exaggerated.
 
 ## Architecture and prerequisites
 
