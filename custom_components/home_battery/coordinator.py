@@ -402,7 +402,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             preview_schedule(now,d,self.settings,rates,amps,pack_voltage,
                 weekly=self.learning.get('profiles_by_weekday') if d['peak_forecast_wh'] is not None else None,
                 error_w=self.learning.get('typical_error_w') or 0,storm=storm,
-                guard=self.charge_guard.saved(),blocked_reason=charge_reason))
+                guard=self.charge_guard.saved()))
         weekly=self.learning.get('profiles_by_weekday') if profile and self.learning.get('status')=='Ready' else None
         key=repr((profile,weekly,self.settings,rates,amps,pack_voltage,storm,now.date()))
         if key!=self.projection_cache[0]:

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1
+
+- Use an independent copy of the real utility-charge guard in the schedule preview. A cleared historical alarm latch can recover with the SOC latch after the clear-reading period, instead of falsely projecting a whole day without charging. Cell readings remain fixed; unknown future cell-voltage recovery is not invented.
+- Explain charging inhibition within the affected timeline periods. Model the recovery check at the preview's fifteen-minute resolution; live protections and their timing are unchanged.
+
 ## 1.6.0
 
 - Add a horizontal rolling 24-hour schedule card to Overview, with charging, battery and utility periods, local-time labels, estimated SOC/reserve traces, duration totals and pointer/touch/keyboard period details.

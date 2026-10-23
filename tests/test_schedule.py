@@ -47,14 +47,22 @@ class ScheduleTests(unittest.TestCase):
                 data=self.data|change
                 self.assertEqual(preview(self.now,data,self.settings,self.rates,9,52)['segments'],[])
     def test_unknown_cell_recovery_never_invents_charge_permission(self):
-        result=self.run_preview(guard={'cell_latched':True},blocked_reason='Cell ceiling reached')
+        result=self.run_preview(guard={'cell_latched':True})
         self.assertNotIn('charge',{s['action'] for s in result['segments']})
     def test_target_latch_prevents_early_top_up(self):
         self.now=self.now.replace(hour=23)
         self.data.update(soc=92,mode='Line',priority='SUB',discharge_w=0)
-        result=self.run_preview(guard={'target_latched':True},blocked_reason='Charge target reached')
+        result=self.run_preview(guard={'target_latched':True})
         self.assertEqual(result['segments'][0]['action'],'utility')
         self.assertEqual(result['segments'][0]['soc_end'],92)
+    def test_cleared_alarm_latch_can_recover_with_target_without_mutating_live_guard(self):
+        self.data.update(soc=92,mode='Line',priority='SUB',discharge_w=16)
+        guard={'target_latched':True,'alarm_latched':True,'cell_latched':False}
+        result=self.run_preview(guard=guard)
+        charge=[s for s in result['segments'] if s['action']=='charge']
+        self.assertTrue(charge,'A cleared alarm latch must not block the entire next day')
+        self.assertLessEqual(charge[0]['soc_start'],90)
+        self.assertEqual(guard,{'target_latched':True,'alarm_latched':True,'cell_latched':False})
     def test_checked_weekday_forecast_used_but_incomplete_never_zero_filled(self):
         weekly={str(d):[500]*24 for d in range(7)}
         self.assertEqual(self.run_preview(weekly=weekly)['basis'],'Checked load forecast')

@@ -5,9 +5,10 @@ This is a rolling estimate, never a command queue. All energy is DC-side.
 from datetime import datetime
 import math
 from .policy import make_plan, numeric, price_window, planning_profile
+from .charge_guard import ChargeGuard
 
 
-def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=None,error_w=0,storm=False,guard=None,blocked_reason=''):
+def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=None,error_w=0,storm=False,guard=None):
     result={'status':'Waiting','segments':[],'points':[],
         'timezone':str(now.tzinfo),'start':now.timestamp(),'end':now.timestamp()+86400,
         'basis':'Checked load forecast' if weekly else 'Current-load estimate',
@@ -27,10 +28,9 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
     cap=settings['capacity_kwh']*1000
     energy=cap*data['soc']/100
     target=cap*settings['charge_target']/100
-    target_latched=bool((guard or {}).get('target_latched'))
-    # Unknown cell/alarm recovery cannot be predicted from SOC. Do not invent it.
-    other_guard=bool((guard or {}).get('cell_latched') or (guard or {}).get('alarm_latched') or
-                     (blocked_reason and not target_latched))
+    # Independent guard clone: reuse real latch/recovery semantics, never mutate
+    # the controller. Cell readings stay fixed; no future voltage recovery is invented.
+    preview_guard=ChargeGuard(guard)
     priority=data.get('priority','SUB')
     idle_dc=max(0,data['discharge_w']-data['charge_w']) if data.get('mode')=='Line' else 0
     stamp=now.timestamp()
@@ -53,9 +53,9 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
         if plan.desired_priority is None:
             return result|{'segments':[],'points':[],'message':plan.reason}
         priority=plan.desired_priority
-        if energy>=target-1e-9: target_latched=True
-        if energy<=target-cap*.05: target_latched=False
-        allow_charge=not (other_guard or target_latched) and plan.decision in {'Recharge','Recover reserve','Charge','Keep ready'}
+        charge_reason=preview_guard.evaluate(projected,settings,stamp)
+        charge_requested=plan.decision in {'Recharge','Recover reserve','Charge','Keep ready'}
+        allow_charge=not charge_reason and charge_requested
         before=energy/cap*100
         action='battery' if priority=='SBU' else 'utility'
         if priority=='SBU':
@@ -69,7 +69,7 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
             energy=max(0,min(cap,energy+charged-idle_dc*hours))
         after=energy/cap*100
         tariff=price_window(when,settings)
-        detail=plan.reason if not (priority=='SUB' and other_guard) else 'Utility charging remains paused; cell/alarm recovery needs live readings.'
+        detail=plan.reason+('; charging paused: '+charge_reason if priority=='SUB' and charge_requested and charge_reason else '')
         step={'start':stamp,'end':stop,'action':action,'reason':detail,'tariff':tariff,
               'price':rates[tariff],'soc_start':round(before,1),'soc_end':round(after,1),'reserve':round(plan.reserve_soc or 0,1)}
         if result['segments'] and all(result['segments'][-1][k]==step[k] for k in ('action','reason','tariff')):
