@@ -182,4 +182,5 @@ const costPanel=Object.assign(Object.create(Panel.prototype),{field:()=>'',model
 const costs=costPanel.savings({reserve_soc:20,projected_savings_day:.3,projected_savings_month:9,projected_savings_year:110,current_price:.518,overnight_price:.128,tariff:'Peak'});
 assert(costs.includes('Cost without battery')&&costs.includes('Cost with battery'),'Explain the purchases behind net savings');
 assert(costs.includes('3.9 kWh DC')&&costs.includes('At current prices'),'Expose the usable energy budget and current-rate assumption');
-console.log('3 savings explanation and disabled-schedule checks passed');
+assert(!costPanel.savings({reserve_soc:null}).includes('4.94 kWh DC'),'An unknown reserve must not be treated as zero');
+console.log('4 savings explanation and disabled-schedule checks passed');
