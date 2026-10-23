@@ -11,6 +11,10 @@ Local Home Assistant energy management for a critical-load battery system: reada
 
 ## What v1 includes
 
+Under **Backup plan → What should this battery power?**, search for the load sensor by its friendly name (live **W/kW**, not energy in kWh), choose **7, 14, 30 or 90 days** of history, and select **Save & learn**. Fourteen days is the default. The learning card shows usable recorded hours as days, the requested window, expected daily demand and typical error from chronological prediction checks. Missing data is never filled with zero; less history than requested is clearly disclosed. Hourly long-term statistics must be available in Home Assistant Recorder. No cloud or AI subscription is used.
+
+Learning refreshes every fifteen minutes with recency-weighted weekday/weekend patterns. Savings estimates use learned day-type profiles when available. Learned demand influences peak energy reservation only after coverage and prediction checks pass; otherwise the live-load rule remains active. This is not yet a full multi-day charging optimizer. Selecting a different meter pauses automatic scheduling and clears its prior heartbeat/commissioning for review; changing the history period alone preserves scheduling. Existing accounting history is retained, never reassigned to the new meter.
+
 - Guided UI setup with searchable power, battery and weather entity selectors.
 - A built-in responsive dashboard: Overview, Backup plan, Savings, Battery health, Weather and Advanced. No custom dashboard cards or separate frontend download.
 - All 25 established DATOUBOSS HPVINV09 bridge configuration points, with bridge-advertised options, human-readable explanations and confidence metadata. Unknown enum codes remain explicitly unknown.

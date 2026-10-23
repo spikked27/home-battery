@@ -19,7 +19,7 @@
           "charge_power_entity": "Battery charging DC power (nonnegative W/kW)",
           "discharge_power_entity": "Battery discharging DC power (nonnegative W/kW)",
           "voltage_entity": "Battery pack voltage (V)",
-          "current_entity": "Battery current (+ charging / \u2212 discharging, A)",
+          "current_entity": "Battery current (+ charging / − discharging, A)",
           "temperature_entity": "Battery temperature",
           "remaining_ah_entity": "BMS remaining capacity (Ah)",
           "energy_in_entity": "Cumulative battery energy charged (Wh/kWh)",
@@ -31,7 +31,8 @@
           "bms_control_entities": "Existing verified BMS controls (optional advanced panel)",
           "battery_heartbeat_topic": "BMS live numeric/timestamp MQTT topic (recommended)",
           "load_heartbeat_topic": "Load meter live numeric/timestamp MQTT topic (recommended)",
-          "nws_alert_zone": "NWS alert zone (optional, e.g. NYZ080); supersedes external alert sensor"
+          "nws_alert_zone": "NWS alert zone (optional, e.g. NYZ080); supersedes external alert sensor",
+          "learning_history_days": "Learn from previous readings"
         }
       }
     },
@@ -39,7 +40,8 @@
       "invalid_source": "Select an existing sensor with the indicated units; derived Home Battery sensors cannot be sources.",
       "separate_directional_power": "Use separate nonnegative charging and discharging power sensors.",
       "invalid_topic": "Enter a topic prefix without wildcards or null bytes.",
-      "invalid_zone": "Use a US NWS zone/county code such as NYZ080 or leave blank."
+      "invalid_zone": "Use a US NWS zone/county code such as NYZ080 or leave blank.",
+      "invalid_history": "Choose 7, 14, 30 or 90 days of history."
     },
     "abort": {
       "already_configured": "This MQTT bridge is already configured."
@@ -56,7 +58,7 @@
           "charge_power_entity": "Battery charging DC power (nonnegative W/kW)",
           "discharge_power_entity": "Battery discharging DC power (nonnegative W/kW)",
           "voltage_entity": "Battery pack voltage (V)",
-          "current_entity": "Battery current (+ charging / \u2212 discharging, A)",
+          "current_entity": "Battery current (+ charging / − discharging, A)",
           "temperature_entity": "Battery temperature",
           "remaining_ah_entity": "BMS remaining capacity (Ah)",
           "energy_in_entity": "Cumulative battery energy charged (Wh/kWh)",
@@ -68,7 +70,8 @@
           "bms_control_entities": "Existing verified BMS controls (optional advanced panel)",
           "battery_heartbeat_topic": "BMS live numeric/timestamp MQTT topic (recommended)",
           "load_heartbeat_topic": "Load meter live numeric/timestamp MQTT topic (recommended)",
-          "nws_alert_zone": "NWS alert zone (optional, e.g. NYZ080); supersedes external alert sensor"
+          "nws_alert_zone": "NWS alert zone (optional, e.g. NYZ080); supersedes external alert sensor",
+          "learning_history_days": "Learn from previous readings"
         }
       }
     },
@@ -76,7 +79,8 @@
       "invalid_source": "Select an existing sensor with the indicated units; derived Home Battery sensors cannot be sources.",
       "separate_directional_power": "Use separate nonnegative charging and discharging power sensors.",
       "invalid_topic": "Enter a topic prefix without wildcards or null bytes.",
-      "invalid_zone": "Use a US NWS zone/county code such as NYZ080 or leave blank."
+      "invalid_zone": "Use a US NWS zone/county code such as NYZ080 or leave blank.",
+      "invalid_history": "Choose 7, 14, 30 or 90 days of history."
     }
   }
 }

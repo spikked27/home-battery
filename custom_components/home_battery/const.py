@@ -1,8 +1,9 @@
 """Public contracts and validated local planning settings."""
 DOMAIN = "home_battery"
-VERSION = "1.3.9"
+VERSION = "1.4.0"
 PLATFORMS = ["sensor","binary_sensor","select","number","switch","button"]
 DEFAULTS = {
+    "learning_history_days":14,
     "capacity_kwh":5.2,"backup_hours":2,"minimum_reserve":20,"storm_reserve":90,
     "charge_target":95,"charge_cell_ceiling":0,"reserve_margin":20,"discharge_efficiency":90,
     "charge_efficiency":90,"overhead_w":45,"wear_cost":0,"minimum_margin":0,

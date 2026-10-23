@@ -42,6 +42,41 @@ async def test_source_units_are_validated(hass):
     assert validate_sources(hass,{"load_entity":"sensor.kw"})=={}
 
 
+async def test_load_setup_keeps_schedule_for_history_only_and_pauses_for_new_meter(hass,coordinator):
+    coordinator.settings['automatic_enabled']=True
+    coordinator.sources['load_entity']='sensor.load'
+    hass.config_entries.async_update_entry(coordinator.entry,options={'automatic_enabled':True,'commissioned':True,'load_heartbeat_topic':'old/meter'})
+    with patch.object(hass.config_entries,'async_update_entry') as update:
+        assert not await coordinator.async_load_setup('sensor.load',30)
+        assert update.call_args.kwargs['options']['automatic_enabled'] is True
+        assert coordinator.settings['learning_history_days']==30
+    hass.states.async_set('sensor.new_meter',.5,{'unit_of_measurement':'kW'})
+    with patch.object(hass.config_entries,'async_update_entry') as update:
+        assert await coordinator.async_load_setup('sensor.new_meter',14)
+        options=update.call_args.kwargs['options']
+        assert options['automatic_enabled'] is False and options['commissioned'] is False
+        assert options['load_heartbeat_topic']==''
+    with pytest.raises(HomeAssistantError):
+        await coordinator.async_load_setup('sensor.new_meter',365)
+    hass.states.async_set('sensor.energy_total',10,{'unit_of_measurement':'kWh'})
+    with pytest.raises(HomeAssistantError):
+        await coordinator.async_load_setup('sensor.energy_total',14)
+
+
+async def test_learning_peak_energy_requires_coverage_validation_and_fresh_day(coordinator):
+    import time
+    coordinator.profile_seen=time.time()
+    coordinator.learning={'status':'Ready','coverage_percent':100,'validation_hours':48,
+        'today_profile_w':[500]*24,'typical_error_w':50,'forecast_date':coordinator.local_now().date().isoformat()}
+    coordinator.settings['price_source']='Manual prices'
+    coordinator.settings['peak_start']=15.0;coordinator.settings['peak_end']=19.0
+    assert coordinator.measurements()['peak_forecast_wh']==pytest.approx((550/.9+45)*4)
+    coordinator.learning['coverage_percent']=20
+    assert coordinator.measurements()['peak_forecast_wh'] is None
+    coordinator.learning['coverage_percent']=100;coordinator.learning['forecast_date']='2020-01-01'
+    assert coordinator.measurements()['peak_forecast_wh'] is None
+
+
 async def test_cell_chart_bounds_require_matching_selected_bms_metadata(hass,coordinator):
     coordinator.sources["cell_entities"]=["sensor.cell_a","sensor.cell_b"]
     attrs={"unit_of_measurement":"V","cell_protection_low_v":2.75,"cell_protection_high_v":4.2}

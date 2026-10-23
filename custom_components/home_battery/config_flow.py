@@ -6,6 +6,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 from .const import DOMAIN
 from .discovery import suggested_sources, detected_root
+from .learning import HISTORY_DAYS
 
 
 def connection_schema(current):
@@ -17,6 +18,7 @@ def connection_schema(current):
 
 def source_schema(current):
     fields = {}
+    fields[vol.Optional('learning_history_days',default=str(current.get('learning_history_days',14)))]=selector.SelectSelector(selector.SelectSelectorConfig(options=[{'value':str(d),'label':f'Last {d} days'+(' (recommended)' if d==14 else '')} for d in HISTORY_DAYS],mode=selector.SelectSelectorMode.DROPDOWN))
     for key, device in [("soc_entity","battery"),("load_entity","power"),
                         ("charge_power_entity","power"),("discharge_power_entity","power"),
                         ("voltage_entity","voltage"),("current_entity","current"),
@@ -41,6 +43,8 @@ def source_schema(current):
 def validate_sources(hass,data):
     units={"soc_entity":{"%"},"load_entity":{"W","kW"},"charge_power_entity":{"W","kW"},"discharge_power_entity":{"W","kW"},"voltage_entity":{"V"},"current_entity":{"A"},"temperature_entity":{"°C","°F"},"remaining_ah_entity":{"Ah"},"energy_in_entity":{"kWh","Wh"},"energy_out_entity":{"kWh","Wh"}}
     errors = {}
+    if 'learning_history_days' in data and str(data['learning_history_days']) not in {str(d) for d in HISTORY_DAYS}:
+        errors['learning_history_days']='invalid_history'
     for key,expected in units.items():
         if not data.get(key): continue
         state = hass.states.get(data[key])

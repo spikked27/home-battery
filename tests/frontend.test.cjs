@@ -128,3 +128,16 @@ assert(!fixed1.includes('data-cell-scale'),'No automatic or arbitrary detail sca
 assert(Panel.prototype.cellChart.call({},{cells:[4.3],cell_voltage_limits:bounds}).includes('Outside BMS limits'),'Out-of-range readings are identified without expanding the scale');
 assert(Panel.prototype.cellChart.call({},{cells:[4.0]}).includes('Waiting for configured BMS'),'Do not guess voltage limits for an unknown chemistry');
 console.log('10 hover and fixed-voltage-scale checks passed');
+
+const learningPanel=Object.assign(Object.create(Panel.prototype),{model:{entities:{own:'sensor.renamed_derived'},sources:{load_entity:'sensor.closet'},settings:{learning_history_days:14},learning:{status:'Ready',available_days:12,history_days:14,coverage_percent:86,typical_error_w:24,validation_hours:48,expected_daily_kwh:6}},_hass:{states:{'sensor.closet':{state:'250',attributes:{friendly_name:'IT closet',unit_of_measurement:'W'}},'sensor.panel':{state:'.8',attributes:{friendly_name:'Critical panel',unit_of_measurement:'kW'}},'sensor.daily':{state:'4',attributes:{friendly_name:'Daily energy',unit_of_measurement:'kWh'}},'sensor.renamed_derived':{state:'55',attributes:{unit_of_measurement:'W'}}}}});
+assert.equal(learningPanel.loadCandidates().length,2,'Offer only external power sensors, not energy totals or our own renamed sensors');
+assert.equal(learningPanel.loadCandidates('critical')[0][0],'sensor.panel','Search by human readable name');
+const learningCard=learningPanel.learningSummary();
+assert(learningCard.includes('IT closet')&&learningCard.includes('12 days')&&learningCard.includes('14 days'),'Name the source and actual available history');
+assert(learningCard.includes('24 W')&&learningCard.includes('48 checked hours'),'Explain real held-out prediction error');
+const loadForm=learningPanel.loadSetup();
+assert(loadForm.includes('What should this battery power?')&&loadForm.includes('Save & learn'),'Plain language learning setup');
+assert(loadForm.includes('14 days — recommended')&&loadForm.includes('90 days'),'Offer understandable history choices');
+assert(loadForm.includes('pauses automatic scheduling'),'Explain the consequence of selecting a different meter');
+assert(!learningCard.includes('guaranteed'),'Do not promise guaranteed savings or prediction accuracy');
+console.log('8 load selection and learning presentation checks passed');

@@ -24,6 +24,7 @@ from .const import DEFAULTS, DOMAIN, PSEG_URL
 from .charge_guard import ChargeGuard, CHARGE_OFF, CHARGE_ON, high_charge_discharge_allowed
 from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window
 from .projection import project_savings
+from .learning import learn_load,HISTORY_DAYS
 
 LOGGER=logging.getLogger(__name__)
 # Two captured handovers took approximately ten minutes from utility entry.
@@ -36,7 +37,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
     def __init__(self,hass,entry):
         super().__init__(hass,LOGGER,name=entry.title,config_entry=entry)
         self.entry=entry
-        self.settings={key:entry.options.get(key,value) for key,value in DEFAULTS.items()}
+        self.settings={key:entry.options.get(key,entry.data.get(key,value)) for key,value in DEFAULTS.items()}
+        self.settings['learning_history_days']=int(self.settings['learning_history_days'])
         self.sources=dict(entry.data)|dict(entry.options)
         self.data={}
         self.transfer_status=""
@@ -65,6 +67,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.load_profile=[]
         self.profile_seen=0
         self.profile_attempt=0
+        self.learning={'status':'Waiting for history','history_days':self.settings['learning_history_days'],'recorded_hours':0,'available_days':0}
         self.projection_cache=(None,None)
         self.previous=None
         self.last_tick=0
@@ -208,6 +211,16 @@ class BatteryCoordinator(DataUpdateCoordinator):
                         and d["mode"] in {"Line","Battery"} and all(d[k] is not None for k in ("soc","load_w","charge_w","discharge_w","grid_voltage")))
         if any(d[k] is not None and d[k]<0 for k in ("load_w","charge_w","discharge_w")): d["fresh"]=False
         d["average_load_w"]=sum(v for _,v in self.average)/len(self.average) if self.average else 0
+        d['peak_forecast_wh']=None
+        model=self.learning
+        if (model.get('status')=='Ready' and model.get('coverage_percent',0)>=80
+            and model.get('validation_hours',0)>=24 and time.time()-self.profile_seen<10800
+            and model.get('forecast_date')==self.local_now().date().isoformat()):
+            profile=model.get('today_profile_w',[])
+            start,end=(15,19) if self.settings['price_source']=='PSEG Rate 195' else (self.settings['peak_start'],self.settings['peak_end'])
+            if len(profile)==24 and all(numeric(v) is not None for v in profile):
+                uncertainty=model.get('typical_error_w') or 0
+                d['peak_forecast_wh']=sum(((v+uncertainty)/(self.settings['discharge_efficiency']/100)+self.settings['overhead_w'])*max(0,min(h+1,end)-max(h,start)) for h,v in enumerate(profile))
         d["battery_power"]=d["discharge_w"]-d["charge_w"] if d["discharge_w"] is not None and d["charge_w"] is not None else None
         cells=[]
         for entity in self.sources.get("cell_entities",[]):
@@ -290,18 +303,22 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 from homeassistant.components.recorder import get_instance
                 from homeassistant.components.recorder.statistics import statistics_during_period
                 entity=self.sources["load_entity"]
-                rows=await get_instance(self.hass).async_add_executor_job(partial(statistics_during_period,self.hass,now-timedelta(hours=26),now,{entity},"hour",None,{"mean"}))
+                days=int(self.settings['learning_history_days'])
+                rows=await get_instance(self.hass).async_add_executor_job(partial(statistics_during_period,self.hass,now-timedelta(days=days),now,{entity},"hour",None,{"mean"}))
                 state=self.hass.states.get(entity)
                 factor=1000 if state and state.attributes.get("unit_of_measurement")=="kW" else 1
+                self.learning=await self.hass.async_add_executor_job(learn_load,rows.get(entity,[]),now,days,factor)
+                self.learning['source']=entity
                 groups={hour:[] for hour in range(24)}
                 for row in rows.get(entity,[]):
                     value=numeric(row.get("mean"));stamp=numeric(row.get("start"))
                     if value is not None and stamp is not None and 0<=value*factor<=10000:
                         groups[dt_util.utc_from_timestamp(stamp).astimezone(now.tzinfo).hour].append(value*factor)
                 if all(groups.values()):
-                    self.load_profile=[sum(groups[h])/len(groups[h]) for h in range(24)]
+                    self.load_profile=self.learning['profile_w'] or [sum(groups[h])/len(groups[h]) for h in range(24)]
                     self.profile_seen=time.time()
             except Exception as err:
+                self.learning=dict(self.learning,status='History unavailable',detail='Home Assistant could not read this sensor’s recorded history. Live scheduling keeps its existing safeguards.')
                 LOGGER.debug("Reference load history unavailable: %s",type(err).__name__)
         zone=self.sources.get("nws_alert_zone")
         if zone and time.time()-self.nws_attempt>=300:
@@ -376,9 +393,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
         charge_values=[numeric(str(self.topics.get(f"control/{key}/state","")).split(" ")[0]) for key in ("utility_charge_current","total_charge_current")]
         amps=min(charge_values) if all(v is not None for v in charge_values) else None
         pack_voltage=round(d["voltage"] or d.get("inverter_battery_voltage") or 0)
-        key=repr((profile,self.settings,rates,amps,pack_voltage,storm,now.date()))
+        weekly=self.learning.get('profiles_by_weekday') if profile and self.learning.get('status')=='Ready' else None
+        key=repr((profile,weekly,self.settings,rates,amps,pack_voltage,storm,now.date()))
         if key!=self.projection_cache[0]:
-            projected=project_savings(now,profile,self.settings,rates,amps,pack_voltage,storm) if profile else None
+            projected=project_savings(now,profile,self.settings,rates,amps,pack_voltage,storm,weekly_profiles=weekly) if profile else None
             self.projection_cache=(key,projected)
         projected=self.projection_cache[1]
         for period_key in ("day","month","year"):
@@ -489,6 +507,26 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.hass.config_entries.async_update_entry(self.entry,options=dict(self.entry.options)|changed)
         self.previous=None
         self.recompute()
+
+    async def async_load_setup(self,entity,days):
+        from .config_flow import validate_sources
+        from homeassistant.helpers import entity_registry as er
+        record=er.async_get(self.hass).async_get(entity)
+        if days not in HISTORY_DAYS or not entity.startswith('sensor.') or (record and record.platform==DOMAIN) or validate_sources(self.hass,{'load_entity':entity}):
+            raise HomeAssistantError('Choose a source power sensor in W or kW, and 7, 14, 30 or 90 days of history')
+        if self.source_lock.locked() or self.pending or self.source_transfer:
+            raise HomeAssistantError('Wait for the current source change to finish before changing learning settings')
+        changed=entity!=self.sources.get('load_entity')
+        options=dict(self.entry.options,load_entity=entity,learning_history_days=int(days))
+        if changed:
+            options.update(load_heartbeat_topic='',commissioned=False,automatic_enabled=False)
+        self.hass.config_entries.async_update_entry(self.entry,options=options)
+        if not changed:
+            self.settings['learning_history_days']=int(days)
+            self.profile_attempt=0;self.profile_seen=0;self.load_profile=[]
+            self.learning={'status':'Learning','history_days':days,'recorded_hours':0,'available_days':0}
+            self.projection_cache=(None,None);self.recompute()
+        return changed
 
     async def async_source(self,value,automatic=False,allow_charging=True):
         """Coordinate charging permission and output preference; verify real transfer."""

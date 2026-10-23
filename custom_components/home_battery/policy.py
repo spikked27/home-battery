@@ -113,7 +113,9 @@ def make_plan(now, data, settings, rates, storm=False):
     peak_start,peak_end=(15,19) if settings["price_source"]=="PSEG Rate 195" else (settings["peak_start"],settings["peak_end"])
     if window == "Off-peak" and now.weekday() < 5 and now.date() not in federal_holidays(now.year) and now.hour < peak_start:
         peak_hours = peak_end-peak_start
-        needed = reserve + peak_hours*demand/1000/capacity*100
+        forecast=numeric(data.get('peak_forecast_wh'))
+        peak_energy=forecast if forecast is not None and forecast>=0 else peak_hours*demand
+        needed = reserve + peak_energy/1000/capacity*100
         if soc <= needed:
             return Plan("Save for peak","Keep remaining energy for the upcoming peak window","SUB",reserve,runtime,margin)
     return Plan("Use battery","Reserve protected and estimated battery operation is economical","SBU",reserve,runtime,margin)

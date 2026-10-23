@@ -19,6 +19,7 @@ async def async_setup(hass,config):
         StaticPathConfig(f"/{DOMAIN}/brand",str(Path(__file__).parent/"brand"),True),
         StaticPathConfig(f"/{DOMAIN}/map",str(Path(__file__).parent/"map"),False)])
     websocket_api.async_register_command(hass,panel_state)
+    websocket_api.async_register_command(hass,load_setup)
     return True
 
 
@@ -41,9 +42,25 @@ async def panel_state(hass,connection,msg):
     connection.send_result(msg["id"],{"data":coordinator.data,"attributes":coordinator.attributes,
                                     "settings":coordinator.settings,"entities":entities,
                                     "sources":{k:v for k,v in coordinator.sources.items() if k.endswith("_entity") or k in {"bms_control_entities","nws_alert_zone"}},
-                                    "history_sources":history_sources,"alerts":coordinator.nws_alert_details,
+                                    "history_sources":history_sources,"learning":coordinator.learning,"alerts":coordinator.nws_alert_details,
                                     "radar_location":{"latitude":round(hass.config.latitude,1),"longitude":round(hass.config.longitude,1)},
                                     "forecast":coordinator.weather_forecast,"forecast_updated":coordinator.forecast_time,"version":VERSION})
+
+
+@websocket_api.websocket_command({vol.Required('type'):'home_battery/load_setup',vol.Required('entry_id'):str,
+                                 vol.Required('load_entity'):str,vol.Required('history_days'):vol.In((7,14,30,90))})
+@websocket_api.async_response
+async def load_setup(hass,connection,msg):
+    if not connection.user.is_admin:
+        connection.send_error(msg['id'],'unauthorized','Administrator access is required to change the load meter');return
+    coordinator=hass.data.get(DOMAIN,{}).get(msg['entry_id'])
+    if not coordinator:
+        connection.send_error(msg['id'],'not_found','Integration entry unavailable');return
+    try:
+        changed=await coordinator.async_load_setup(msg['load_entity'],msg['history_days'])
+        connection.send_result(msg['id'],{'saved':True,'meter_changed':changed,'scheduling_paused':changed})
+    except HomeAssistantError as err:
+        connection.send_error(msg['id'],'invalid_load_setup',str(err))
 
 
 async def async_setup_entry(hass,entry):
@@ -79,6 +96,11 @@ async def async_options_updated(hass,entry):
         await hass.config_entries.async_reload(entry.entry_id)
     else:
         coordinator.settings.update({k:v for k,v in entry.options.items() if k in DEFAULTS})
+        days=int(coordinator.settings['learning_history_days'])
+        if coordinator.learning.get('history_days')!=days:
+            coordinator.profile_attempt=0;coordinator.profile_seen=0;coordinator.load_profile=[]
+            coordinator.learning={'status':'Learning','history_days':days,'recorded_hours':0,'available_days':0}
+        coordinator.settings['learning_history_days']=days
         coordinator.previous=None
         coordinator.recompute()
 

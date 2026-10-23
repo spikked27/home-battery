@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from .policy import make_plan, numeric, price_window
 
 
-def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, storm=False):
+def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, storm=False, weekly_profiles=None):
     """Repeat the observed 24h profile, settle 14 days, then model a week.
 
     Model the controller's charge permission separately from SUB source choice.
@@ -13,6 +13,8 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
     if len(hourly_w)!=24 or any(numeric(v) is None or not 0<=v<=10000 for v in hourly_w):
         return None
     if not rates or numeric(charge_amps) is None or charge_amps<0 or numeric(pack_voltage) is None or not 20<=pack_voltage<=70:
+        return None
+    if weekly_profiles and (set(weekly_profiles)!={str(d) for d in range(7)} or any(len(p)!=24 or any(numeric(v) is None or not 0<=v<=10000 for v in p) for p in weekly_profiles.values())):
         return None
     cap=settings["capacity_kwh"]
     eta_d=settings["discharge_efficiency"]/100
@@ -27,9 +29,10 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
     starting_energy=None
     for step in range(21*96):
         when=start+timedelta(minutes=step*15)
-        load=hourly_w[when.hour]
+        profile=weekly_profiles[str(when.weekday())] if weekly_profiles else hourly_w
+        load=profile[when.hour]
         demand=load/eta_d+settings["overhead_w"]
-        data={"soc":energy/cap*100,"load_w":load,"average_load_w":sum(hourly_w)/24,
+        data={"soc":energy/cap*100,"load_w":load,"average_load_w":sum(profile)/24,
               "charge_w":0.,"discharge_w":demand if priority=="SBU" else 0.,
               "grid_voltage":120.,"fresh":True,"healthy":True,"mode":"Battery" if priority=="SBU" else "Line","priority":priority}
         plan=make_plan(when,data,settings,rates,storm)
@@ -65,7 +68,7 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
     return {"day":net/7,"month":net/7*365.25/12,"year":net/7*365.25,
             "shifted_kwh_day":shifted/7,"baseline_cost_day":baseline/7,
             "operating_cost_day":(operating+wear+replenishment)/7,
-            "charge_limit_a":charge_amps,"model":"Observed 24-hour load repeated; 14-day settling period and 7-day simulation",
+            "charge_limit_a":charge_amps,"model":("Learned weekday/weekend hourly profiles" if weekly_profiles else "Observed 24-hour load repeated")+"; 14-day settling period and 7-day simulation",
             "assumptions":["Current monthly prices held constant; annual value is a run rate, not a tariff forecast",
                 "Configured capacity, efficiencies, idle use and reserve margin",
                 "Grid charging only when the planner requests recharge; grid hold does not top up",

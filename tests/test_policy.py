@@ -25,6 +25,13 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.rates,{"Super off-peak":.12852,"Off-peak":.2321,"Peak":.518057})
         self.assertIsNone(p.pseg_rates(self.now.replace(year=2027),.1392))
     def test_peak_economic_discharge(self):self.assertEqual(self.plan().desired_priority,"SBU")
+    def test_checked_forecast_can_release_energy_not_needed_for_peak(self):
+        self.now=self.now.replace(hour=10);self.d['soc']=60
+        self.assertEqual(self.plan().decision,'Save for peak')
+        self.d['peak_forecast_wh']=500
+        self.assertEqual(self.plan().decision,'Use battery')
+        self.d['peak_forecast_wh']=-1
+        self.assertEqual(self.plan().decision,'Save for peak')
     def test_low_soc_recharge(self):
         self.d["soc"]=10;self.assertEqual(self.plan().desired_priority,"SUB")
     def test_stale_never_switches(self):

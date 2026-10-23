@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+- Add a searchable W/kW load-sensor chooser and 7/14/30/90-day learning period directly in Backup plan, with a shortcut and readable learning status on Overview. Show the actual usable history, missing coverage, expected daily energy and chronological prediction error.
+- Learn local hourly weekday/weekend demand with recency weighting. Read completed hourly Recorder statistics only; never replace missing readings with zero or validate against future training data. Refresh every fifteen minutes and rebuild from the selected sensor after restart.
+- Use learned weekday/weekend profiles for savings projections. Peak energy reservation can use learned demand plus observed prediction error only with at least 80% history coverage, 24 held-out checks, a current-day forecast and fresh model; otherwise retain live-load planning.
+- Sensor changes clear the old heartbeat, start a separate pattern and pause scheduling for review. History-only changes preserve scheduling. Existing charging limits, reserves, protection checks and branding remain intact.
+
 ## 1.3.9
 
 - Inspect history charts by hovering, touching, or using arrow keys. Show recorded values with units, cursor time and sample time; preserve missing-data gaps instead of interpolating values.
