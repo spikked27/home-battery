@@ -25,6 +25,41 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.rates,{"Super off-peak":.12852,"Off-peak":.2321,"Peak":.518057})
         self.assertIsNone(p.pseg_rates(self.now.replace(year=2027),.1392))
     def test_peak_economic_discharge(self):self.assertEqual(self.plan().desired_priority,"SBU")
+    def test_all_profiles_operate_while_learning(self):
+        for goal in c.SELECTS['planning_goal']:
+            with self.subTest(goal=goal):
+                self.settings['planning_goal']=goal
+                self.assertNotIn('peak_forecast_wh',self.d)
+                self.assertEqual(self.plan().decision,'Use battery')
+                self.now=self.now.replace(hour=23)
+                self.assertEqual(self.plan().decision,'Charge')
+                self.now=self.now.replace(hour=16)
+    def test_outage_profile_keeps_extra_backup_but_still_shaves_peaks(self):
+        base=self.plan()
+        self.settings['planning_goal']='More Outage Protection'
+        extra=self.plan()
+        self.assertAlmostEqual(extra.reserve_soc,base.reserve_soc*1.5)
+        self.assertEqual(extra.desired_priority,'SBU')
+        self.d['soc']=(base.reserve_soc+extra.reserve_soc)/2
+        self.assertEqual(self.plan().decision,'Recharge')
+        self.settings['planning_goal']='More Savings'
+        self.assertEqual(self.plan().decision,'Use battery')
+    def test_profiles_never_reduce_user_floor_or_skip_protections(self):
+        for goal in c.SELECTS['planning_goal']:
+            with self.subTest(goal=goal):
+                self.settings.update(planning_goal=goal,minimum_reserve=70)
+                self.assertGreaterEqual(self.plan().reserve_soc,70)
+                self.d['soc']=65
+                self.assertEqual(self.plan().decision,'Recharge')
+                self.d['healthy']=False
+                self.assertIsNone(self.plan().desired_priority)
+                self.d.update(healthy=True,soc=80)
+                self.d['fresh']=False
+                self.assertIsNone(self.plan().desired_priority)
+                self.d['fresh']=True
+    def test_legacy_preferences_normalize(self):
+        self.assertEqual(p.normalize_planning_goal('Save money'),'More Savings')
+        self.assertEqual(p.normalize_planning_goal('Backup first'),'More Outage Protection')
     def test_checked_forecast_can_release_energy_not_needed_for_peak(self):
         self.now=self.now.replace(hour=10);self.d['soc']=60
         self.assertEqual(self.plan().decision,'Save for peak')

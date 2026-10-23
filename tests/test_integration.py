@@ -77,6 +77,33 @@ async def test_learning_peak_energy_requires_coverage_validation_and_fresh_day(c
     assert coordinator.measurements()['peak_forecast_wh'] is None
 
 
+async def test_profile_forecasts_change_headroom_not_model_quality_gates(coordinator):
+    import time
+    coordinator.profile_seen=time.time()
+    coordinator.learning={'status':'Ready','coverage_percent':100,'validation_hours':48,
+        'today_profile_w':[500]*24,'typical_error_w':50,'forecast_date':coordinator.local_now().date().isoformat()}
+    for goal,watts in [('Aggressive Savings',500),('More Savings',550),('More Outage Protection',600)]:
+        coordinator.settings['planning_goal']=goal
+        assert coordinator.measurements()['peak_forecast_wh']==pytest.approx((watts/.9+45)*4)
+        coordinator.learning['coverage_percent']=20
+        assert coordinator.measurements()['peak_forecast_wh'] is None
+        coordinator.learning['coverage_percent']=100
+
+
+async def test_old_preference_survives_restart_and_options_updates(hass,coordinator):
+    from custom_components.home_battery import async_options_updated
+    hass.config_entries.async_update_entry(coordinator.entry,options={'planning_goal':'Save money','automatic_enabled':True})
+    restored=BatteryCoordinator(hass,coordinator.entry)
+    assert restored.settings['planning_goal']=='More Savings'
+    assert restored.settings['automatic_enabled'] is True
+    await restored.async_close()
+    hass.data.setdefault(DOMAIN,{})[coordinator.entry.entry_id]=coordinator
+    with patch.object(coordinator,'recompute'):
+        await async_options_updated(hass,coordinator.entry)
+    assert coordinator.settings['planning_goal']=='More Savings'
+    assert coordinator.settings['automatic_enabled'] is True
+
+
 async def test_bms_power_cannot_be_selected_as_ac_load_even_after_rename(hass,coordinator):
     hass.states.async_set('sensor.renamed_bms_power',500,{'unit_of_measurement':'W'})
     coordinator.sources['soc_entity']='sensor.soc'

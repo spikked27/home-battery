@@ -22,7 +22,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DEFAULTS, DOMAIN, PSEG_URL
 from .charge_guard import ChargeGuard, CHARGE_OFF, CHARGE_ON, high_charge_discharge_allowed
-from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window
+from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window, normalize_planning_goal, planning_profile
 from .projection import project_savings
 from .learning import learn_load,HISTORY_DAYS
 
@@ -39,6 +39,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.entry=entry
         self.settings={key:entry.options.get(key,entry.data.get(key,value)) for key,value in DEFAULTS.items()}
         self.settings['learning_history_days']=int(self.settings['learning_history_days'])
+        self.settings['planning_goal']=normalize_planning_goal(self.settings['planning_goal'])
         self.sources=dict(entry.data)|dict(entry.options)
         self.data={}
         self.transfer_status=""
@@ -219,7 +220,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             profile=model.get('today_profile_w',[])
             start,end=(15,19) if self.settings['price_source']=='PSEG Rate 195' else (self.settings['peak_start'],self.settings['peak_end'])
             if len(profile)==24 and all(numeric(v) is not None for v in profile):
-                uncertainty=model.get('typical_error_w') or 0
+                uncertainty=(model.get('typical_error_w') or 0)*planning_profile(self.settings)['forecast_error_multiplier']
                 d['peak_forecast_wh']=sum(((v+uncertainty)/(self.settings['discharge_efficiency']/100)+self.settings['overhead_w'])*max(0,min(h+1,end)-max(h,start)) for h,v in enumerate(profile))
         d["battery_power"]=d["discharge_w"]-d["charge_w"] if d["discharge_w"] is not None and d["charge_w"] is not None else None
         cells=[]

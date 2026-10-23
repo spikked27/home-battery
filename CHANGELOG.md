@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0
+
+- Add Aggressive Savings, More Savings and More Outage Protection with readable choice cards. Vary checked peak-forecast headroom by zero, one or two typical prediction errors; the outage profile also retains 50% more estimated backup time. User reserve floors, charging limits, storm readiness and BMS protections remain authoritative.
+- Keep automatic scheduling active while history builds, using live-load fallback with the same economic and protection checks. Show which planning path is in use. Forecast quality gates apply equally to every profile.
+- Migrate old preference names without changing entity IDs or automatic enablement. More Outage Protection replaces the previous utility-only Backup first behavior and can shave peaks above its larger reserve.
+
 ## 1.4.1
 
 - Keep BMS DC-power readings and retired calculated planning helpers out of the critical-load chooser. Exclude integration-owned and selected BMS-device entities by registry identity so renamed entities remain filtered. Validate the same boundary on save.

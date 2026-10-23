@@ -37,11 +37,12 @@ class ProjectionTests(unittest.TestCase):
         self.assertIsNone(project(self.now,[330.]*23,self.settings,self.rates,2,52))
         self.assertIsNone(project(self.now,[330.]*24,self.settings,None,2,52))
         self.assertIsNone(project(self.now,[330.]*24,self.settings,self.rates,None,52))
-    def test_backup_first_not_misrepresented_as_arbitrage(self):
-        self.settings["planning_goal"]="Backup first"
+    def test_outage_preference_still_saves_with_extra_headroom(self):
+        base=self.run_model()
+        self.settings["planning_goal"]="More Outage Protection"
         result=self.run_model()
-        self.assertEqual(result["shifted_kwh_day"],0)
-        self.assertLess(result["day"],0)
+        self.assertGreater(result["shifted_kwh_day"],0)
+        self.assertLessEqual(result["shifted_kwh_day"],base["shifted_kwh_day"])
     def test_reference_flag_does_not_disable_simulation(self):
         self.settings["commissioned"]=False
         self.assertIsNotNone(self.run_model())

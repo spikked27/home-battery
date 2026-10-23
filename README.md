@@ -68,6 +68,22 @@ The Overview energy diagram follows the inverter's actual operating mode and fre
 
 ## Commission scheduling
 
+### Savings preference and learning
+
+Learning does not gate automatic scheduling. With a commissioned source transition and scheduling enabled, the live-load rules continue to protect reserve, charge during the configured cheap window and use battery when the price difference covers estimated losses and wear. Missing/limited history falls back to current and averaged measured load for peak reservation; stale telemetry, alarms, manual holds and unverified switching can still pause control. A tiny load can remain on utility because inverter overhead would erase savings.
+
+Choose a **Savings preference** in Backup plan or the Home Assistant select:
+
+| Preference | Backup headroom | Checked peak forecast |
+| --- | --- | --- |
+| Aggressive Savings | Requested backup time and configured margin | Expected demand; no extra prediction-error allowance |
+| More Savings (default) | Requested backup time and configured margin | Expected demand plus one typical prediction error |
+| More Outage Protection | 1.5 times requested backup time, with the configured margin | Expected demand plus twice the typical prediction error |
+
+The larger of estimated backup energy and your minimum percentage floor is retained, capped at 100%. Storm readiness still takes precedence. Extra headroom is a heuristic, not a statistical confidence guarantee or a promised runtime. Every profile uses the same history-coverage, validation, freshness, economic and protection checks. Until a checked forecast is available, Aggressive Savings and More Savings intentionally use the same live-load fallback; More Outage Protection adds backup headroom immediately. All profiles can use energy above reserve for economical peak shaving.
+
+Existing `Save money` preferences become `More Savings`; `Backup first` becomes `More Outage Protection`. The latter now permits economical discharge above its larger reserve instead of keeping utility selected all the time. Existing entity IDs, automatic enablement and user reserve/charging settings are preserved. Selecting another physical load sensor still requires review of that new source; changing only the learning period does not disable scheduling.
+
 Scheduling starts **disabled**. Confirm that **SUB starts grid charging** and **SBU supplies the inverter output from battery**, then enable the source-transition confirmation and Automatic scheduling. Scheduling uses the selected load meter for reserve and price planning; it does not require that meter to be commissioned as the connected panel. When using a reference meter, reserve/runtime estimates reflect that reference demand and savings remain projections. Only mark the meter commissioned when it measures the inverter-fed critical loads. Selecting a different meter disables scheduling for review; turning off source-transition confirmation also disables scheduling.
 
 **Commission the hardware recovery threshold:** in lithium/BMS mode, program 40 can hold the inverter on utility even after SBU is stored. Set its return-to-battery SOC below the SOC where the controller should resume discharge, while keeping program 39 and all BMS protections appropriate for the battery. A 20% hardware grid-transfer floor and 25% recovery threshold were configured in the site test, but a lower threshold alone did not produce repeatable SUB-to-SBU handovers. These values are not universal battery recommendations. Keep scheduling disabled until actual transfers are commissioned. The integration verifies a fresh actual Battery/Line mode after each source action and reports a fault if transfer does not occur. ACK/readback alone is insufficient.

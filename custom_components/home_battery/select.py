@@ -11,7 +11,7 @@ CATALOG=json.loads((Path(__file__).parent/"catalog.json").read_text())
 
 async def async_setup_entry(hass,entry,async_add_entities):
     coordinator=hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([BatterySelect(coordinator,key,key.replace("_"," ").title()) for key in SELECTS]+
+    async_add_entities([BatterySelect(coordinator,key,"Savings preference" if key=="planning_goal" else key.replace("_"," ").title()) for key in SELECTS]+
                        [InverterSelect(coordinator,key,meta["name"]) for key,meta in CATALOG.items()])
 
 class BatterySelect(BatteryEntity,SelectEntity):

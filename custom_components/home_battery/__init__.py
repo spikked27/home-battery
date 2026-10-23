@@ -9,6 +9,7 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import DEFAULTS, DOMAIN, PLATFORMS, VERSION
 from .coordinator import BatteryCoordinator
 from .discovery import suggested_sources
+from .policy import normalize_planning_goal
 
 
 async def async_setup(hass,config):
@@ -98,6 +99,7 @@ async def async_options_updated(hass,entry):
         await hass.config_entries.async_reload(entry.entry_id)
     else:
         coordinator.settings.update({k:v for k,v in entry.options.items() if k in DEFAULTS})
+        coordinator.settings['planning_goal']=normalize_planning_goal(coordinator.settings['planning_goal'])
         days=int(coordinator.settings['learning_history_days'])
         if coordinator.learning.get('history_days')!=days:
             coordinator.profile_attempt=0;coordinator.profile_seen=0;coordinator.load_profile=[]

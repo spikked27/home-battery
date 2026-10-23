@@ -1,6 +1,6 @@
 """Public contracts and validated local planning settings."""
 DOMAIN = "home_battery"
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 PLATFORMS = ["sensor","binary_sensor","select","number","switch","button"]
 DEFAULTS = {
     "learning_history_days":14,
@@ -9,7 +9,7 @@ DEFAULTS = {
     "charge_efficiency":90,"overhead_w":45,"wear_cost":0,"minimum_margin":0,
     "charge_start":22,"charge_end":6,"peak_start":15,"peak_end":19,
     "charge_cap_a":30,"ac_budget_a":32,"freshness_seconds":90,
-    "planning_goal":"Save money","weather_policy":"Automatic advice",
+    "planning_goal":"More Savings","weather_policy":"Automatic advice",
     "price_source":"PSEG Rate 195","automatic_enabled":False,"storm_override":False,
     "commissioned":False,"switching_confirmed":False,"manual_override_minutes":120,
     "storm_wind_mph":30,"storm_gust_mph":40,
@@ -41,7 +41,7 @@ NUMBERS = {
     "manual_off_rate":("Manual off-peak price",0,2,.0001,"USD/kWh"),
     "manual_peak_rate":("Manual peak price",0,2,.0001,"USD/kWh"),
 }
-SELECTS = {"planning_goal":["Save money","Backup first"],
+SELECTS = {"planning_goal":["Aggressive Savings","More Savings","More Outage Protection"],
            "weather_policy":["Automatic advice","Manual reserve"],
            "price_source":["PSEG Rate 195","Manual prices"]}
 SWITCHES = {"automatic_enabled":"Automatic scheduling","storm_override":"Manual storm reserve",

@@ -4,6 +4,21 @@ from datetime import date, datetime, timedelta
 import math
 
 
+def normalize_planning_goal(value):
+    """Keep old stored choices valid without changing entity IDs."""
+    return {"Save money":"More Savings", "Backup first":"More Outage Protection"}.get(value,value)
+
+
+def planning_profile(settings):
+    """Heuristic headroom, not a probability guarantee or a protection override."""
+    name=normalize_planning_goal(settings.get("planning_goal","More Savings"))
+    return {
+        "Aggressive Savings":{"backup_multiplier":1.,"forecast_error_multiplier":0.},
+        "More Savings":{"backup_multiplier":1.,"forecast_error_multiplier":1.},
+        "More Outage Protection":{"backup_multiplier":1.5,"forecast_error_multiplier":2.},
+    }.get(name,{"backup_multiplier":1.5,"forecast_error_multiplier":2.})
+
+
 def numeric(value):
     try:
         result = float(value)
@@ -72,7 +87,8 @@ def make_plan(now, data, settings, rates, storm=False):
         return Plan("Paused","A measurement is outside its accepted range",None)
     capacity = settings["capacity_kwh"]
     demand = max(load/(settings["discharge_efficiency"]/100)+settings["overhead_w"],data["discharge_w"])
-    reserve = max(settings["minimum_reserve"],settings["backup_hours"]*demand/1000/capacity*100*(1+settings["reserve_margin"]/100))
+    profile=planning_profile(settings)
+    reserve = max(settings["minimum_reserve"],settings["backup_hours"]*profile["backup_multiplier"]*demand/1000/capacity*100*(1+settings["reserve_margin"]/100))
     if storm:
         reserve = max(reserve,settings["storm_reserve"])
     reserve = min(100,reserve)
@@ -90,8 +106,8 @@ def make_plan(now, data, settings, rates, storm=False):
         return Plan("Battery recovery","Charging blocked; BMS permits discharge to recover a high-SOC/voltage alarm", "SBU",reserve,runtime)
     if reserve >= settings["charge_target"]:
         return Plan("Keep ready","Reserve needs approach the charge target; use grid", "SUB",reserve,runtime)
-    if storm or settings["planning_goal"] == "Backup first":
-        return Plan("Keep ready","Storm reserve or backup-first preference", "SUB",reserve,runtime)
+    if storm:
+        return Plan("Keep ready","Storm reserve advised", "SUB",reserve,runtime)
     if soc <= reserve:
         return Plan("Recharge","Battery is at or below the outage reserve", "SUB",reserve,runtime)
     if data.get("priority")=="SUB" and soc<min(settings["charge_target"],reserve+5):
