@@ -141,3 +141,8 @@ assert(loadForm.includes('14 days — recommended')&&loadForm.includes('90 days'
 assert(loadForm.includes('pauses automatic scheduling'),'Explain the consequence of selecting a different meter');
 assert(!learningCard.includes('guaranteed'),'Do not promise guaranteed savings or prediction accuracy');
 console.log('8 load selection and learning presentation checks passed');
+for(const id of ['sensor.it_closet_battery_planning_load','sensor.daly_bms_battery_power','sensor.renamed_bms_dc'])learningPanel._hass.states[id]={state:'500',attributes:{unit_of_measurement:'W',friendly_name:'Battery estimate'}};
+learningPanel.model.excluded_load_entities=['sensor.renamed_bms_dc'];
+assert.equal(learningPanel.loadCandidates().length,2,'Do not offer legacy estimates or BMS DC sensors, including renamed device entities');
+assert.equal(learningPanel.loadCandidates()[0][0],'sensor.closet','Put the currently selected load first');
+console.log('2 measured-load candidate boundary checks passed');

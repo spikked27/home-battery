@@ -33,6 +33,8 @@ async def panel_state(hass,connection,msg):
     entities={entry.unique_id.removeprefix(coordinator.entry.entry_id+"_"):entry.entity_id
               for entry in er.async_entries_for_config_entry(registry,coordinator.entry.entry_id)}
     suggested=suggested_sources(hass)
+    bms=registry.async_get(coordinator.sources.get('soc_entity',''))
+    excluded=[e.entity_id for e in registry.entities.values() if e.platform==DOMAIN or (bms and bms.device_id and e.device_id==bms.device_id)]
     history_sources={"load":coordinator.sources.get("load_entity"),"current":coordinator.sources.get("current_entity") or entities.get("current"),"spread":entities.get("cell_spread")}
     if coordinator.sources.get("cell_entities") and coordinator.sources.get("cell_entities")==suggested.get("cell_entities"):
         soc=registry.async_get(suggested.get("soc_entity",""))
@@ -42,7 +44,7 @@ async def panel_state(hass,connection,msg):
     connection.send_result(msg["id"],{"data":coordinator.data,"attributes":coordinator.attributes,
                                     "settings":coordinator.settings,"entities":entities,
                                     "sources":{k:v for k,v in coordinator.sources.items() if k.endswith("_entity") or k in {"bms_control_entities","nws_alert_zone"}},
-                                    "history_sources":history_sources,"learning":coordinator.learning,"alerts":coordinator.nws_alert_details,
+                                    "history_sources":history_sources,"learning":coordinator.learning,"excluded_load_entities":excluded,"alerts":coordinator.nws_alert_details,
                                     "radar_location":{"latitude":round(hass.config.latitude,1),"longitude":round(hass.config.longitude,1)},
                                     "forecast":coordinator.weather_forecast,"forecast_updated":coordinator.forecast_time,"version":VERSION})
 

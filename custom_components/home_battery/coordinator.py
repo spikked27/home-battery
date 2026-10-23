@@ -512,7 +512,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
         from .config_flow import validate_sources
         from homeassistant.helpers import entity_registry as er
         record=er.async_get(self.hass).async_get(entity)
-        if days not in HISTORY_DAYS or not entity.startswith('sensor.') or (record and record.platform==DOMAIN) or validate_sources(self.hass,{'load_entity':entity}):
+        bms=er.async_get(self.hass).async_get(self.sources.get('soc_entity',''))
+        derived=entity.startswith(('sensor.it_closet_battery_','sensor.daly_bms_')) or entity in {self.sources.get('charge_power_entity'),self.sources.get('discharge_power_entity')}
+        derived |= bool(record and (record.platform==DOMAIN or (bms and bms.device_id and record.device_id==bms.device_id)))
+        if days not in HISTORY_DAYS or not entity.startswith('sensor.') or derived or validate_sources(self.hass,{'load_entity':entity}):
             raise HomeAssistantError('Choose a source power sensor in W or kW, and 7, 14, 30 or 90 days of history')
         if self.source_lock.locked() or self.pending or self.source_transfer:
             raise HomeAssistantError('Wait for the current source change to finish before changing learning settings')

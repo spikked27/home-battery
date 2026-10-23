@@ -77,6 +77,14 @@ async def test_learning_peak_energy_requires_coverage_validation_and_fresh_day(c
     assert coordinator.measurements()['peak_forecast_wh'] is None
 
 
+async def test_bms_power_cannot_be_selected_as_ac_load_even_after_rename(hass,coordinator):
+    hass.states.async_set('sensor.renamed_bms_power',500,{'unit_of_measurement':'W'})
+    coordinator.sources['soc_entity']='sensor.soc'
+    entries={'sensor.soc':SimpleNamespace(device_id='bms',platform='mqtt'),
+             'sensor.renamed_bms_power':SimpleNamespace(device_id='bms',platform='mqtt')}
+    with patch('homeassistant.helpers.entity_registry.async_get',return_value=SimpleNamespace(async_get=entries.get)):
+        with pytest.raises(HomeAssistantError,match='source power sensor'):
+            await coordinator.async_load_setup('sensor.renamed_bms_power',14)
 async def test_cell_chart_bounds_require_matching_selected_bms_metadata(hass,coordinator):
     coordinator.sources["cell_entities"]=["sensor.cell_a","sensor.cell_b"]
     attrs={"unit_of_measurement":"V","cell_protection_low_v":2.75,"cell_protection_high_v":4.2}

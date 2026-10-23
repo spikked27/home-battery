@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1
+
+- Keep BMS DC-power readings and retired calculated planning helpers out of the critical-load chooser. Exclude integration-owned and selected BMS-device entities by registry identity so renamed entities remain filtered. Validate the same boundary on save.
+- Put the current meter and available sensors first, then sort by friendly name.
+
 ## 1.4.0
 
 - Add a searchable W/kW load-sensor chooser and 7/14/30/90-day learning period directly in Backup plan, with a shortcut and readable learning status on Overview. Show the actual usable history, missing coverage, expected daily energy and chronological prediction error.
