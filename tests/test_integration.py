@@ -90,6 +90,24 @@ async def test_profile_forecasts_change_headroom_not_model_quality_gates(coordin
         coordinator.learning['coverage_percent']=100
 
 
+async def test_schedule_preview_reflects_holds_without_sending_commands(hass,coordinator):
+    import time
+    coordinator.start_time=0
+    coordinator.settings.update(price_source='Manual prices',automatic_enabled=True)
+    coordinator.sources['voltage_entity']='sensor.pack_voltage'
+    hass.states.async_set('sensor.pack_voltage',52,{'unit_of_measurement':'V'})
+    coordinator.topics.update({'control/utility_charge_current/state':'9 A','control/total_charge_current/state':'30 A'})
+    with patch('custom_components.home_battery.coordinator.mqtt.async_publish') as publish:
+        coordinator.recompute()
+        assert coordinator.data['schedule_preview']['status']=='Estimated'
+        assert coordinator.data['schedule_preview']['segments']
+        coordinator.hold_until=time.time()+3600
+        coordinator.recompute()
+        assert coordinator.data['schedule_preview']['status']=='Paused'
+        assert coordinator.data['schedule_preview']['segments']==[]
+        publish.assert_not_called()
+
+
 async def test_old_preference_survives_restart_and_options_updates(hass,coordinator):
     from custom_components.home_battery import async_options_updated
     hass.config_entries.async_update_entry(coordinator.entry,options={'planning_goal':'Save money','automatic_enabled':True})

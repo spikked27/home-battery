@@ -162,3 +162,16 @@ assert(learningPanel.learningSummary(true).includes('Learned peak planning'),'On
 learningPanel._hass.states['select.preference'].state='unavailable';
 assert.equal((learningPanel.savingsPreference().match(/ disabled/g)||[]).length,3,'Disable profile actions when the select is unavailable');
 console.log('7 savings preference and learning fallback checks passed');
+
+const timelinePanel=Object.create(Panel.prototype),start=Date.UTC(2026,9,23,18)/1000;
+const timeline={status:'Estimated',timezone:'America/New_York',start,end:start+86400,basis:'Current-load estimate',profile:'More Savings',message:'Updates with conditions.',assumptions:'Not a command queue.',points:[{t:start,soc:80,reserve:20},{t:start+86400,soc:70,reserve:20}],segments:[{start,end:start+3600,action:'battery',tariff:'Peak',price:.5,soc_start:80,soc_end:70,reason:'Reserve protected'},{start:start+3600,end:start+86400,action:'utility',tariff:'Off-peak',price:.2,soc_start:70,soc_end:70,reason:'Save for peak'}]};
+const timelineCard=timelinePanel.anticipatedSchedule({schedule_preview:timeline});
+assert(timelineCard.includes('Next 24 hours')&&timelineCard.includes('Use battery now'),'Make the next action readable at a glance');
+assert(timelineCard.includes('Use utility around')&&timelineCard.includes('Fri'),'Name the next change with a local day and time');
+assert.equal((timelineCard.match(/data-schedule-step=/g)||[]).length,2,'Each planned period is inspectable');
+assert(timelineCard.includes('80% → 70%')&&timelineCard.includes('Dashed: outage reserve'),'Show estimated SOC and reserve together');
+assert(timelineCard.includes('Current-load estimate')&&timelineCard.includes('Estimated, not fixed'),'Disclose fallback and uncertainty');
+assert(timelineCard.includes('scroll horizontally')&&timelineCard.includes('tabindex="0"'),'Allow accessible horizontal navigation on mobile');
+const pausedSchedule=timelinePanel.anticipatedSchedule({schedule_preview:{status:'Paused',message:'Manual hold',segments:[]}});
+assert(pausedSchedule.includes('Manual hold')&&!pausedSchedule.includes('Use battery now'),'Never present a paused controller as active');
+console.log('7 anticipated schedule rendering checks passed');

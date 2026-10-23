@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.0
+
+- Add a horizontal rolling 24-hour schedule card to Overview, with charging, battery and utility periods, local-time labels, estimated SOC/reserve traces, duration totals and pointer/touch/keyboard period details.
+- Build the preview with the same scheduling policy, active savings preference, checked weekday forecasts or live-load fallback, SOC, current charge limits and charge-target hysteresis. Preview computation never sends commands or mutates live settings/guard state.
+- Label schedule estimates and their assumptions. Reflect manual holds, faults, pending transfers, startup settling, missing prices/limits, alarms and stale readings; do not invent future cell/alarm recovery. Handle 24 elapsed hours across daylight-saving changes.
+
 ## 1.5.0
 
 - Add Aggressive Savings, More Savings and More Outage Protection with readable choice cards. Vary checked peak-forecast headroom by zero, one or two typical prediction errors; the outage profile also retains 50% more estimated backup time. User reserve floors, charging limits, storm readiness and BMS protections remain authoritative.

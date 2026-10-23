@@ -25,6 +25,7 @@ from .charge_guard import ChargeGuard, CHARGE_OFF, CHARGE_ON, high_charge_discha
 from .policy import cell_extremes, make_plan, money_rates, numeric, pseg_rates, price_window, normalize_planning_goal, planning_profile
 from .projection import project_savings
 from .learning import learn_load,HISTORY_DAYS
+from .schedule import preview_schedule
 
 LOGGER=logging.getLogger(__name__)
 # Two captured handovers took approximately ten minutes from utility entry.
@@ -394,6 +395,14 @@ class BatteryCoordinator(DataUpdateCoordinator):
         charge_values=[numeric(str(self.topics.get(f"control/{key}/state","")).split(" ")[0]) for key in ("utility_charge_current","total_charge_current")]
         amps=min(charge_values) if all(v is not None for v in charge_values) else None
         pack_voltage=round(d["voltage"] or d.get("inverter_battery_voltage") or 0)
+        pause=(self.command_error or ('Manual control hold is active.' if time.time()<self.hold_until else '')
+               or ('Waiting for the current source transfer.' if self.source_transfer else '')
+               or ('Waiting for restart telemetry to settle.' if time.time()-self.start_time<90 else ''))
+        data['schedule_preview']=({'status':'Paused','message':pause,'segments':[],'points':[]} if pause else
+            preview_schedule(now,d,self.settings,rates,amps,pack_voltage,
+                weekly=self.learning.get('profiles_by_weekday') if d['peak_forecast_wh'] is not None else None,
+                error_w=self.learning.get('typical_error_w') or 0,storm=storm,
+                guard=self.charge_guard.saved(),blocked_reason=charge_reason))
         weekly=self.learning.get('profiles_by_weekday') if profile and self.learning.get('status')=='Ready' else None
         key=repr((profile,weekly,self.settings,rates,amps,pack_voltage,storm,now.date()))
         if key!=self.projection_cache[0]:
