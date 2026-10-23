@@ -671,7 +671,7 @@ async def test_normal_scheduler_actuates_without_commissioning(coordinator):
     coordinator.settings.update(automatic_enabled=True,switching_confirmed=True,commissioned=False)
     coordinator.start_time=time.time()-120
     with (patch.object(coordinator,"fetch_context",new_callable=AsyncMock),
-          patch("custom_components.home_battery.coordinator.make_plan",return_value=Plan("Use battery","Test", "SBU",20,5)),
+          patch("custom_components.home_battery.coordinator.plan_with_reserve_hold",return_value=(Plan("Use battery","Test", "SBU",20,5),False)),
           patch.object(coordinator,"async_source",new_callable=AsyncMock) as source):
         await coordinator.async_tick()
     source.assert_awaited_once_with("SBU",automatic=True)
