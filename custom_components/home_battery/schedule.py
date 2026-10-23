@@ -64,9 +64,10 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
         else:
             headroom=max(0,settings['ac_budget_a']*data['grid_voltage']-watts-settings['overhead_w'])
             charge_w=min(charge_amps,settings['charge_cap_a'],30)*pack_voltage
-            charged=min(max(0,target-energy),min(charge_w,headroom*settings['charge_efficiency']/100)*hours) if allow_charge else 0
+            net_charge=max(0,min(charge_w,headroom*settings['charge_efficiency']/100)-idle_dc)
+            charged=min(max(0,target-energy),net_charge*hours) if allow_charge else 0
             if charged>0: action='charge'
-            energy=max(0,min(cap,energy+charged-idle_dc*hours))
+            energy=max(0,min(cap,energy+charged-(idle_dc*hours if charged<=0 else 0)))
         after=energy/cap*100
         tariff=price_window(when,settings)
         detail=plan.reason+('; charging paused: '+charge_reason if priority=='SUB' and charge_requested and charge_reason else '')
