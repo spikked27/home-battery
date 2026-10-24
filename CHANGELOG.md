@@ -1,3 +1,7 @@
+# 1.8.1
+
+- Correct the remaining savings-profile help text: all profiles keep the same backup-hours target.
+
 # 1.8.0
 
 - Use backup hours as the single normal reserve target; calculate the percentage automatically from demand, capacity and losses.

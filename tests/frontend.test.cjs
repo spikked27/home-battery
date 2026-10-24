@@ -189,3 +189,5 @@ assert(!source.includes('minimum_reserve'),'Do not present a second percentage r
 const hoursReserve=Panel.prototype.statusStrip.call({model:{settings:{backup_hours:2}}},{soc:80,reserve_soc:17.5,runtime_hours:10});
 assert(hoursReserve.includes('2 h target')&&hoursReserve.includes('calculated reserve'),'Explain the hours-to-percentage relationship beside battery SOC');
 console.log('2 hours-only reserve presentation checks passed');
+
+assert(!source.includes('adds backup headroom immediately'),'No stale claim of an implicit backup-hours multiplier');
