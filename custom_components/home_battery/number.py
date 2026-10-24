@@ -25,6 +25,6 @@ class BatteryNumber(BatteryEntity,NumberEntity):
         if not self.native_min_value<=value<=self.native_max_value:
             raise HomeAssistantError("Setting outside supported range")
         proposed=self.coordinator.settings|{self.key:value}
-        if proposed["minimum_reserve"]>proposed["charge_target"] or proposed["peak_start"]>=proposed["peak_end"] or proposed["charge_start"]==proposed["charge_end"]:
-            raise HomeAssistantError("Reserve, charging or peak-window settings conflict")
+        if proposed["peak_start"]>=proposed["peak_end"] or proposed["charge_start"]==proposed["charge_end"]:
+            raise HomeAssistantError("Charging or peak-window settings conflict")
         await self.coordinator.async_setting(self.key,value)

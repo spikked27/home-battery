@@ -47,11 +47,16 @@ class ProjectionTests(unittest.TestCase):
         self.settings["commissioned"]=False
         self.assertIsNotNone(self.run_model())
     def test_larger_reserve_cannot_increase_shift(self):
-        base=self.run_model();self.settings["minimum_reserve"]=90
+        base=self.run_model();self.settings["backup_hours"]=12
         self.assertLess(self.run_model()["shifted_kwh_day"],base["shifted_kwh_day"])
     def test_cannot_shift_more_than_daily_cheap_battery_allocation(self):
         result=self.run_model()
-        usable_dc=self.settings['capacity_kwh']*(self.settings['charge_target']-self.settings['minimum_reserve'])/100
+        reserve_dc=self.settings['backup_hours']*(330/.9+self.settings['overhead_w'])/1000*(1+self.settings['reserve_margin']/100)
+        usable_dc=self.settings['capacity_kwh']*self.settings['charge_target']/100-reserve_dc
         self.assertLessEqual(result['shifted_kwh_day'],usable_dc*.9+1e-6,'Expensive reserve charging must not create extra discretionary daily cycles')
+    def test_legacy_percentage_does_not_change_savings_model(self):
+        base=self.run_model()
+        self.settings['minimum_reserve']=90
+        self.assertEqual(self.run_model(),base)
 
 if __name__=="__main__": unittest.main()

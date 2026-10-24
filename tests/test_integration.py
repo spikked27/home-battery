@@ -293,6 +293,10 @@ async def test_malformed_mqtt_json_ignored(coordinator):
 
 async def test_setup_unload_registers_panel_and_removes_runtime(hass,coordinator):
     from custom_components.home_battery import async_setup_entry, async_unload_entry
+    from homeassistant.helpers import entity_registry as er
+    registry=er.async_get(hass)
+    retired=registry.async_get_or_create('number',DOMAIN,f'{coordinator.entry.entry_id}_minimum_reserve',config_entry=coordinator.entry)
+    retained=registry.async_get_or_create('number',DOMAIN,f'{coordinator.entry.entry_id}_backup_hours',config_entry=coordinator.entry)
     hass.data[DOMAIN]={}
     with (patch("custom_components.home_battery.coordinator.BatteryCoordinator.async_start",new_callable=AsyncMock),
           patch.object(hass.config_entries,"async_forward_entry_setups",new_callable=AsyncMock) as forward,
@@ -300,6 +304,8 @@ async def test_setup_unload_registers_panel_and_removes_runtime(hass,coordinator
           patch.object(hass.config_entries,"async_unload_platforms",new_callable=AsyncMock,return_value=True),
           patch("custom_components.home_battery.frontend.async_remove_panel") as remove):
         assert await async_setup_entry(hass,coordinator.entry)
+        assert registry.async_get(retired.entity_id) is None
+        assert registry.async_get(retained.entity_id) is not None
         assert coordinator.entry.entry_id in hass.data[DOMAIN]
         assert panel.call_args.kwargs["webcomponent_name"]=="home-battery-panel"
         assert len(forward.call_args.args[1])==6

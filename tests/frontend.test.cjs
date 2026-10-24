@@ -153,7 +153,7 @@ learningPanel._hass.states['select.preference']={state:'More Savings',attributes
 const preferences=learningPanel.savingsPreference();
 assert.equal((preferences.match(/data-profile=/g)||[]).length,3,'Offer the three savings preferences');
 assert.equal((preferences.match(/aria-pressed="true"/g)||[]).length,1,'Show exactly one selected preference');
-assert(preferences.includes('50% more estimated backup time')&&preferences.includes('minimum reserve'),'Explain the reserve tradeoff');
+assert(preferences.includes('requested backup time')&&!preferences.includes('50% more')&&!preferences.includes('minimum reserve'),'All profiles honor one explicit backup-hours target');
 assert(preferences.includes('all profiles use live load readings'),'Do not wait for learning to finish');
 learningPanel.model.settings.automatic_enabled=true;
 assert(learningPanel.learningSummary(true).includes('Automatic scheduling enabled · Live-load planning'),'Show enabled scheduling with live fallback');
@@ -184,3 +184,8 @@ assert(costs.includes('Cost without battery')&&costs.includes('Cost with battery
 assert(costs.includes('3.9 kWh DC')&&costs.includes('At current prices'),'Expose the usable energy budget and current-rate assumption');
 assert(!costPanel.savings({reserve_soc:null}).includes('4.94 kWh DC'),'An unknown reserve must not be treated as zero');
 console.log('4 savings explanation and disabled-schedule checks passed');
+
+assert(!source.includes('minimum_reserve'),'Do not present a second percentage reserve setting');
+const hoursReserve=Panel.prototype.statusStrip.call({model:{settings:{backup_hours:2}}},{soc:80,reserve_soc:17.5,runtime_hours:10});
+assert(hoursReserve.includes('2 h target')&&hoursReserve.includes('calculated reserve'),'Explain the hours-to-percentage relationship beside battery SOC');
+console.log('2 hours-only reserve presentation checks passed');

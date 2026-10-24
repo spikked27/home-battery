@@ -20,7 +20,7 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
     eta_d=settings["discharge_efficiency"]/100
     eta_c=settings["charge_efficiency"]/100
     target=cap*settings["charge_target"]/100
-    energy=cap*settings["minimum_reserve"]/100
+    energy=0.  # Settle from empty; the same hours-derived reserve governs the model.
     priority="SUB"
     charge_latched=False
     reserve_hold=False

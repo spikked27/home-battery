@@ -13,10 +13,10 @@ def planning_profile(settings):
     """Heuristic headroom, not a probability guarantee or a protection override."""
     name=normalize_planning_goal(settings.get("planning_goal","More Savings"))
     return {
-        "Aggressive Savings":{"backup_multiplier":1.,"forecast_error_multiplier":0.},
-        "More Savings":{"backup_multiplier":1.,"forecast_error_multiplier":1.},
-        "More Outage Protection":{"backup_multiplier":1.5,"forecast_error_multiplier":2.},
-    }.get(name,{"backup_multiplier":1.5,"forecast_error_multiplier":2.})
+        "Aggressive Savings":{"forecast_error_multiplier":0.},
+        "More Savings":{"forecast_error_multiplier":1.},
+        "More Outage Protection":{"forecast_error_multiplier":2.},
+    }.get(name,{"forecast_error_multiplier":2.})
 
 
 def numeric(value):
@@ -93,8 +93,9 @@ def make_plan(now, data, settings, rates, storm=False):
         return Plan("Paused","A measurement is outside its accepted range",None)
     capacity = settings["capacity_kwh"]
     demand = max(load/(settings["discharge_efficiency"]/100)+settings["overhead_w"],data["discharge_w"])
-    profile=planning_profile(settings)
-    reserve = max(settings["minimum_reserve"],settings["backup_hours"]*profile["backup_multiplier"]*demand/1000/capacity*100*(1+settings["reserve_margin"]/100))
+    # Hours are the single normal backup target. Legacy percentage options are
+    # deliberately ignored, including when retained in an existing HA entry.
+    reserve = settings["backup_hours"]*demand/1000/capacity*100*(1+settings["reserve_margin"]/100)
     if storm:
         reserve = max(reserve,settings["storm_reserve"])
     reserve = min(100,reserve)

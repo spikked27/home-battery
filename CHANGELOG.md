@@ -1,3 +1,10 @@
+# 1.8.0
+
+- Use backup hours as the single normal reserve target; calculate the percentage automatically from demand, capacity and losses.
+- Retire the editable percentage floor, ignore legacy values, and remove its entity on upgrade.
+- Keep the requested backup time consistent across savings preferences; retain storm overrides and battery protections.
+- Explain the calculated percentage alongside the hours target on Overview and Backup plan.
+
 # Changelog
 
 ## 1.7.0

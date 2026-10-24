@@ -75,8 +75,9 @@ async def async_setup_entry(hass,entry):
         # The short-lived 1.3.3 authorization switch is no longer applicable.
         # Remove only this integration entry's retired entity, not user helpers.
         registry=er.async_get(hass)
-        retired=registry.async_get_entity_id("switch",DOMAIN,f"{entry.entry_id}_test_load_mode")
-        if retired: registry.async_remove(retired)
+        for domain,key in (("switch","test_load_mode"),("number","minimum_reserve")):
+            retired=registry.async_get_entity_id(domain,DOMAIN,f"{entry.entry_id}_{key}")
+            if retired: registry.async_remove(retired)
         # Content-address the bundle so preview/stable updates cannot reuse stale UI.
         bundle_hash=await hass.async_add_executor_job(lambda:sha256((Path(__file__).parent/"frontend.js").read_bytes()).hexdigest()[:12])
         await panel_custom.async_register_panel(hass,

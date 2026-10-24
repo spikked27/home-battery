@@ -34,20 +34,20 @@ class PolicyTests(unittest.TestCase):
                 self.now=self.now.replace(hour=23)
                 self.assertEqual(self.plan().decision,'Charge')
                 self.now=self.now.replace(hour=16)
-    def test_outage_profile_keeps_extra_backup_but_still_shaves_peaks(self):
+    def test_profiles_keep_the_same_explicit_backup_hours(self):
         base=self.plan()
         self.settings['planning_goal']='More Outage Protection'
         extra=self.plan()
-        self.assertAlmostEqual(extra.reserve_soc,base.reserve_soc*1.5)
+        self.assertAlmostEqual(extra.reserve_soc,base.reserve_soc)
         self.assertEqual(extra.desired_priority,'SBU')
         self.d['soc']=(base.reserve_soc+extra.reserve_soc)/2
-        self.assertEqual(self.plan().decision,'Recharge')
+        self.assertEqual(self.plan().decision,'Hold reserve')
         self.settings['planning_goal']='More Savings'
-        self.assertEqual(self.plan().decision,'Use battery')
-    def test_profiles_never_reduce_user_floor_or_skip_protections(self):
+        self.assertEqual(self.plan().decision,'Hold reserve')
+    def test_profiles_preserve_hours_target_and_protections(self):
         for goal in c.SELECTS['planning_goal']:
             with self.subTest(goal=goal):
-                self.settings.update(planning_goal=goal,minimum_reserve=70)
+                self.settings.update(planning_goal=goal,backup_hours=6)
                 self.assertGreaterEqual(self.plan().reserve_soc,70)
                 self.d['soc']=65
                 self.assertEqual(self.plan().decision,'Recharge')
@@ -96,12 +96,14 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.plan().desired_priority,'SUB')
     def test_reserve_session_never_recycles_expensive_recovery(self):
         self.d.update(soc=20,load_w=300,discharge_w=0,priority='SUB')
+        floor=self.plan().reserve_soc
+        self.d['soc']=floor
         plan,held=p.plan_with_reserve_hold(self.now,self.d,self.settings,self.rates)
         self.assertTrue(held);self.assertEqual(plan.decision,'Hold reserve')
-        self.d['soc']=19
+        self.d['soc']=floor-1
         plan,held=p.plan_with_reserve_hold(self.now,self.d,self.settings,self.rates,reserve_hold=held)
         self.assertEqual(plan.decision,'Recharge')
-        self.d['soc']=25
+        self.d['soc']=floor+5
         plan,held=p.plan_with_reserve_hold(self.now,self.d,self.settings,self.rates,reserve_hold=held)
         self.assertTrue(held);self.assertEqual(plan.decision,'Hold reserve')
         plan,held=p.plan_with_reserve_hold(self.now.replace(hour=23),self.d,self.settings,self.rates,reserve_hold=held)
@@ -109,6 +111,18 @@ class PolicyTests(unittest.TestCase):
         self.d['soc']=95
         plan,held=p.plan_with_reserve_hold(self.now.replace(hour=7),self.d,self.settings,self.rates,reserve_hold=held)
         self.assertEqual(plan.decision,'Use battery')
+    def test_hours_derive_percentage_without_legacy_floor(self):
+        self.d.update(load_w=300,discharge_w=0)
+        self.settings['minimum_reserve']=90  # A pre-upgrade stored option is inert.
+        self.assertAlmostEqual(self.plan().reserve_soc,2*(300/.9+45)/1000/5.2*100*1.2)
+        self.settings['backup_hours']=4
+        self.assertAlmostEqual(self.plan().reserve_soc,4*(300/.9+45)/1000/5.2*100*1.2)
+        self.d['load_w']=600
+        self.assertGreater(self.plan().reserve_soc,30)
+    def test_unattainable_backup_target_is_capped_and_holds_grid(self):
+        self.settings['backup_hours']=72
+        self.assertEqual(self.plan().reserve_soc,100)
+        self.assertEqual(self.plan().desired_priority,'SUB')
     def test_stale_or_outage_does_not_clear_reserve_hold(self):
         for change in ({'fresh':False},{'grid_voltage':0},{'soc':float('nan')}):
             _,held=p.plan_with_reserve_hold(self.now.replace(hour=23),self.d|change,self.settings,self.rates,reserve_hold=True)
