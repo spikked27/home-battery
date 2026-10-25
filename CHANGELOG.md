@@ -1,3 +1,8 @@
+# 1.8.6
+
+- Simplify the 24-hour timeline to one block per continuous action. Adjacent utility, battery or charging periods no longer split merely because the controller's explanation or tariff changes.
+- Preserve the original explanations, full time span, endpoint SOC and any rate range in selected-period details. Timeline selection still follows the inspected clock time. Controller forecasts and live scheduling are unchanged.
+
 # 1.8.5
 
 - Keep an inspected schedule period selected until another period is activated. Touch panning, pointer-enter events after layout changes, and restored focus no longer overwrite the selection. Hover retains the native tooltip.

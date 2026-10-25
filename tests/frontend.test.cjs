@@ -176,6 +176,24 @@ const pausedSchedule=timelinePanel.anticipatedSchedule({schedule_preview:{status
 assert(pausedSchedule.includes('Manual hold')&&!pausedSchedule.includes('Use battery now'),'Never present a paused controller as active');
 console.log('7 anticipated schedule rendering checks passed');
 
+const groupPeriods=vm.runInNewContext(source+'\nschedulePeriods',{HTMLElement:class{},customElements:{define:()=>{}}});
+const splitUtility={...timeline,segments:[timeline.segments[0],
+ {...timeline.segments[1],end:start+7200,reason:'Allocation used'},
+ {...timeline.segments[1],start:start+7200,reason:'Backup time covered',tariff:'Peak',price:.5,soc_end:68}
+]};
+const originalSegments=JSON.stringify(splitUtility.segments),grouped=groupPeriods(splitUtility);
+assert.equal(grouped.length,2,'Adjacent utility periods are one visible action despite different reasons and rates');
+assert.equal(grouped[1].start,start+3600);assert.equal(grouped[1].end,start+86400);
+assert.equal(grouped[1].soc_end,68,'Merged period preserves the final forecast SOC');
+assert(grouped[1].reason.includes('Allocation used')&&grouped[1].reason.includes('Backup time covered'),'Keep both explanations in period details');
+assert.equal(grouped[1].tariff,'Mixed rates','Do not mislabel a period that crosses tariffs');
+assert.equal(JSON.stringify(splitUtility.segments),originalSegments,'Presentation grouping must not mutate controller data');
+assert.equal((timelinePanel.anticipatedSchedule({schedule_preview:splitUtility}).match(/data-schedule-step=/g)||[]).length,2,'Render only the grouped periods');
+timelinePanel.scheduleSelectedTime=start+8000;
+assert.equal(timelinePanel.selectedScheduleIndex(splitUtility),1,'Retain a selected time when reason boundaries are merged');
+assert.equal(groupPeriods({segments:[splitUtility.segments[1],{...splitUtility.segments[2],start:start+7300}]}).length,2,'Do not bridge missing forecast time');
+console.log('10 action-based timeline grouping checks passed');
+
 const scheduleOff=Panel.prototype.transferNotice.call({}, {scheduler_status:'Observe only'});
 assert(scheduleOff.includes('Automatic scheduling is off')&&scheduleOff.includes('scheduled source changes will not run'),'Do not confuse a recommendation with an enabled schedule');
 const costPanel=Object.assign(Object.create(Panel.prototype),{field:()=>'',model:{settings:{commissioned:false,capacity_kwh:5.2,charge_target:95},attributes:{projected_savings_day:{baseline_cost_day:1.65,operating_cost_day:1.35,load_kwh_day:7.16,shifted_kwh_day:3.1,charge_limit_a:9}}}});
