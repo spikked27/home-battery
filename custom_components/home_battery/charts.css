@@ -24,3 +24,5 @@ main{padding:16px 24px}h2{font-size:20px;margin:12px 0}h3{font-size:17px}p{line-
 @media(max-width:750px){.schedule-card{padding:16px}.schedule-heading h2{font-size:23px}.schedule-summary{display:block}.schedule-summary>span{display:block;margin-top:7px}.schedule-legend{gap:8px 14px;font-size:11px}.schedule-battery{font-size:11px}.schedule-meta span{font-size:10px}.schedule-detail{min-height:6em}}
 
 .schedule-paused{border-left:3px solid #fbbf24}
+
+.schedule-step[aria-pressed="true"]{box-shadow:inset 0 0 0 3px #10212ecc;filter:brightness(1.05)}

@@ -1,3 +1,9 @@
+# 1.8.2
+
+- Preserve the selected clock time, horizontal timeline position, keyboard focus and panel scroll across telemetry refreshes. Updated forecasts can split or merge periods without resetting inspection to the beginning.
+- Release the edited input after saving so fresh reserve and savings values can render; queue a follow-up refresh if polling is already in progress.
+- Show projected monthly and annual savings beside the backup target; recorded historical savings remain unchanged.
+
 # 1.8.1
 
 - Correct the remaining savings-profile help text: all profiles keep the same backup-hours target.

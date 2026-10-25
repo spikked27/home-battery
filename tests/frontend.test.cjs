@@ -191,3 +191,68 @@ assert(hoursReserve.includes('2 h target')&&hoursReserve.includes('calculated re
 console.log('2 hours-only reserve presentation checks passed');
 
 assert(!source.includes('adds backup headroom immediately'),'No stale claim of an implicit backup-hours multiplier');
+
+// A real render replaces the timeline DOM. Simulate that browser boundary,
+// including focus events, rather than only checking generated HTML strings.
+const inspection=Object.assign(Object.create(Panel.prototype),{
+ tab:'overview',renderedTab:'overview',scrollTop:640,
+ model:{version:'test',settings:{commissioned:false},data:{schedule_preview:timeline}},
+ overview:()=>'',statusStrip:()=>'',transferNotice:()=>'',historyRange:()=>'',
+ learningSummary:()=>'',trendGraph:()=>'',currentGraph:()=>'',
+ bindControls(){this.bindSchedule();}
+});
+let timelineNodes,regionNode,detailNode,rootHTML;
+const inspectionRoot={activeElement:null,
+ querySelectorAll:q=>q==='[data-schedule-step]'?timelineNodes:[],
+ querySelector:q=>q==='.schedule-scroll'?regionNode:q==='[data-schedule-detail]'?detailNode:q.startsWith('[data-schedule-step=')?timelineNodes[Number(q.match(/"(\d+)"/)[1])]:null
+};
+Object.defineProperty(inspectionRoot,'innerHTML',{get:()=>rootHTML,set:v=>{
+ rootHTML=v;inspectionRoot.activeElement=null;regionNode={scrollLeft:0};detailNode={textContent:''};
+ timelineNodes=inspection.model.data.schedule_preview.segments.map((_,i)=>({
+  dataset:{scheduleStep:String(i)},attrs:{},tagName:'BUTTON',
+  hasAttribute:name=>name==='data-schedule-step',setAttribute(k,v){this.attrs[k]=v;},
+  focus(options){assert(options.preventScroll);inspectionRoot.activeElement=this;this.onfocus?.();}
+ }));
+}});
+inspection.shadowRoot=inspectionRoot;inspectionRoot.innerHTML='initial';inspection.bindSchedule();
+timelineNodes[1].onclick();regionNode.scrollLeft=320;inspectionRoot.activeElement=timelineNodes[1];
+const selectedClock=inspection.scheduleSelectedTime;
+inspection.render();
+assert.equal(regionNode.scrollLeft,320,'A telemetry render must preserve horizontal timeline position');
+assert.equal(inspection.scrollTop,640,'A telemetry render must preserve page position');
+assert.equal(timelineNodes[1].attrs['aria-pressed'],'true','Keep the selected later period after refresh');
+assert(detailNode.textContent.includes('Use utility'),'Keep later-period details instead of resetting to the first period');
+assert.equal(inspectionRoot.activeElement,timelineNodes[1],'Restore keyboard focus without scrolling');
+inspection.model.data.schedule_preview={...timeline,start:start+10,segments:[
+ {...timeline.segments[0],start:start+10},
+ {...timeline.segments[1],end:start+7200},
+ {...timeline.segments[1],start:start+7200,action:'charge'}
+]};
+inspection.render();
+assert.equal(inspection.scheduleSelectedTime,selectedClock,'Keep the inspected clock time when forecast boundaries change');
+assert.equal(timelineNodes[2].attrs['aria-pressed'],'true','Follow the clock time across a split, not the old segment index');
+assert(detailNode.textContent.includes('Charge battery'),'Show the newly forecast action at the selected time');
+inspection.scheduleSelectedTime=start-10;
+assert.equal(inspection.selectedScheduleIndex(inspection.model.data.schedule_preview),0,'An expired time falls back to the current period');
+assert.equal(inspection.scheduleSelectedTime,null,'Do not keep an expired inspection anchor');
+console.log('9 timeline refresh continuity checks passed');
+
+(async()=>{
+ const input={tagName:'INPUT',blur(){actionRoot.activeElement=null;}},actionRoot={activeElement:null};
+ const saving=Object.assign(Object.create(Panel.prototype),{shadowRoot:actionRoot,model:{entities:{backup_hours:'number.hours'}},
+  _hass:{callService:async()=>{}},refresh:async()=>{assert.equal(actionRoot.activeElement,null,'Saved input must not block fresh savings rendering');},error:'old'});
+ actionRoot.activeElement=input;await saving.action('backup_hours','number','set_value',{value:1});
+ assert.equal(saving.error,'');
+ const other={tagName:'INPUT'};actionRoot.activeElement=input;
+ saving._hass.callService=async()=>{actionRoot.activeElement=other;};saving.refresh=async()=>{};
+ await saving.action('backup_hours','number','set_value',{value:2});
+ assert.equal(actionRoot.activeElement,other,'Do not steal focus if the user has moved to another input');
+ let releasePoll,calls=0;
+ const polling=Object.assign(Object.create(Panel.prototype),{_panel:{config:{entry_id:'test'}},_hass:{callWS:async()=>{
+  calls++;if(calls===1)await new Promise(resolve=>{releasePoll=resolve;});return {data:{}};
+ }},loading:false,captureLive:()=>{},history:async()=>{},render:()=>{}});
+ const first=polling.refresh();await polling.refresh();releasePoll();await first;
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls,2,'A save during polling must request a follow-up refresh instead of disappearing');
+ console.log('4 settings-save refresh checks passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

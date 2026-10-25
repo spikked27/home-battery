@@ -435,6 +435,22 @@ async def test_projection_never_credits_reference_load(coordinator):
     assert coordinator.ledger["avoided"]==42.
 
 
+async def test_backup_hours_save_recalculates_projection_immediately(coordinator):
+    import time
+    coordinator.settings.update(price_source='Manual prices',manual_super_rate=.1,manual_off_rate=.2,manual_peak_rate=.5)
+    coordinator.load_profile=[330.]*24
+    coordinator.profile_seen=time.time()
+    coordinator.topics.update({'control/utility_charge_current/state':'30 A','control/total_charge_current/state':'30 A','telemetry/battery_voltage':'52'})
+    coordinator.received['telemetry/battery_voltage']=time.time()
+    await coordinator.async_setting('backup_hours',1)
+    low=coordinator.data['projected_savings_year']
+    reserve=coordinator.data['reserve_soc']
+    await coordinator.async_setting('backup_hours',4)
+    assert coordinator.data['projected_savings_year'] < low
+    assert coordinator.data['reserve_soc'] > reserve
+    assert coordinator.entry.options['backup_hours']==4
+
+
 async def test_recorder_profile_requires_all_hours_and_converts_kw(coordinator):
     from datetime import timedelta
     import time
