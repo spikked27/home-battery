@@ -55,8 +55,6 @@ class ChargeGuard:
             reason = 'BMS alarm or inverter fault: utility charging blocked'
         elif settings.get('thermal_enabled') and (numeric(data.get('cold_temperature')) is None or data['cold_temperature']<settings.get('thermal_charge_floor',8)):
             reason = 'Cold-weather charging floor or missing temperature: utility charging blocked'
-        elif data.get('scheduled_charge_block'):
-            reason = 'Scheduled charging is deferred or its early-charge budget is exhausted'
         elif ceiling and not complete:
             reason = 'Cell readings unavailable: utility charging blocked'
         elif self.target_latched and soc > settings['charge_target'] - 5:

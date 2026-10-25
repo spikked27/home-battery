@@ -93,7 +93,14 @@ class ThermalTests(unittest.TestCase):
         self.assertLess(model['validation_error_c_per_hour'],.01)
     def test_timing_stop_does_not_wait_for_source_switch(self):
         self.d['scheduled_charge_block']=True
-        self.assertIn('deferred',guard.ChargeGuard().evaluate(self.d,self.s,0))
+        self.assertEqual(guard.ChargeGuard().evaluate(self.d,self.s,0),'',
+                         'Ordinary schedule permission is not a battery protection alarm')
+    def test_daytime_charge_stop_does_not_remove_overnight_charge(self):
+        self.d.update(soc=89.6,scheduled_charge_block=True,cold_temperature=20,mode='Battery',priority='SBU',discharge_w=76)
+        now=self.now.replace(hour=10)
+        result=preview(now,self.d,self.s,self.rates,9,54)
+        overnight=[s for s in result['segments'] if s['action']=='charge' and s['start']>=t.next_window(now,self.s)[0]]
+        self.assertTrue(overnight,'A daytime utility-charge stop cannot suppress tomorrow\'s valid charge permission')
     def test_preview_does_not_pulse_charge_after_it_has_started(self):
         r=preview(self.now,self.d,self.s,self.rates,9,54)
         phases=[row['action'] for row in r['segments'] if row['start']<t.next_window(self.now,self.s)[1]]

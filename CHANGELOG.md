@@ -1,3 +1,9 @@
+# 1.9.2
+
+- Fix missing overnight charge blocks after adding cold-weather scheduling. A live daytime charge-stop flag must not become a battery protection reason copied through every future forecast interval.
+- Keep schedule stop enforcement independent of source-switch cooldown in the live controller. Ordinary scheduling no longer displays a misleading battery charging-paused warning; temperature, cell, SOC, alarm and recovery guards are unchanged.
+- Add regressions that reproduce the missing charge block and distinguish schedule permission from battery protection. Existing HA-backed enforcement coverage remains in place.
+
 # 1.9.1
 
 - Validate held-out passive temperature intervals against an hourly cooling profile fitted only to earlier observations, then fit the operational profile to all history.

@@ -544,7 +544,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
 
     async def _async_inhibit_charging(self,d):
         reason=self.charge_guard.evaluate(d,self.settings,time.time())
-        if not reason or self.topics.get("control/charger_priority/state")==CHARGE_OFF: return
+        # Scheduled stop permission is recalculated each tick. It is not a
+        # protection latch and must never leak into future preview intervals.
+        scheduled_stop=d.get('scheduled_charge_block',False)
+        if (not reason and not scheduled_stop) or self.topics.get("control/charger_priority/state")==CHARGE_OFF: return
         if not d["fresh"] and time.time()-self.start_time<90: return
         if self.guard_stop_failed or self.lock.locked() or self.source_lock.locked(): return
         if not self.fresh_topic("status") or self.topics.get("status",{}).get("status")!="ready": return
