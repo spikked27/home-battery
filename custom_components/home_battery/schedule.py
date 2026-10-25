@@ -59,6 +59,9 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
             projected['peak_forecast_wh']=sum(((v+uncertainty)/(settings['discharge_efficiency']/100)+settings['overhead_w'])*max(0,min(h+1,end)-max(h,start)) for h,v in enumerate(weekly[str(when.weekday())]))
         else: projected['peak_forecast_wh']=None
         plan,reserve_hold=plan_with_reserve_hold(when,projected,settings,rates,storm,reserve_hold)
+        thermal_context['advance_active']=plan.decision=='Cold-weather charge'
+        if thermal_context['advance_active']:
+            thermal_context['advance_window_end']=next_window(when,settings)[1]
         if settings.get('thermal_enabled') and plan.decision=='Charge':
             thermal_context['started_window_end']=next_window(when,settings)[1]
         if plan.desired_priority is None:

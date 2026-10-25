@@ -18,10 +18,13 @@ class ThermalHistory:
         if not isinstance(self.previous,(list,tuple)) or len(self.previous)!=4 or not all(numeric(v) is not None for v in self.previous[:3]):self.previous=None
         self.budget_uncertain=bool(saved.get('budget_uncertain',False))
         self.started_window_end=numeric(saved.get('started_window_end'))
+        self.advance_window_end=numeric(saved.get('advance_window_end'))
+        self.advance_active=bool(saved.get('advance_active',False))
 
     def saved(self):
         return {'samples':self.samples,'day':self.day,'cost':self.cost,'energy':self.energy,
-                'previous':self.previous,'budget_uncertain':self.budget_uncertain,'started_window_end':self.started_window_end}
+                'previous':self.previous,'budget_uncertain':self.budget_uncertain,'started_window_end':self.started_window_end,
+                'advance_window_end':self.advance_window_end,'advance_active':self.advance_active}
 
     def seed(self, temperatures, powers):
         power={r['start']:numeric(r.get('mean')) for r in powers}
@@ -125,7 +128,8 @@ def thermal_advice(now, data, settings, context=None):
     if start<=stamp<end and hours>(end-stamp)/3600:
         return result|{'status':'Charge window tight','delay_until':stamp,
             'message':'Start needed charging now; the remaining cheap window may be too short to reach target.'}
-    if data['soc']>=settings['charge_target']-5:
+    continuing_advance=context.get('advance_active') and context.get('advance_window_end')==end
+    if data['soc']>=settings['charge_target'] or (data['soc']>=settings['charge_target']-5 and not continuing_advance):
         return result|{'status':'No extra cycling','message':'Battery is at or near its target; do not discharge it to make room for heating.'}
     if not model.get('ready'):
         return result|{'status':'Learning cooling pattern','message':'Normal charging continues while passive temperature history and prediction checks accumulate.'}
@@ -151,6 +155,8 @@ def thermal_advice(now, data, settings, context=None):
     result.update(delay_until=chosen,predicted_start_temperature_c=round(temperature_at(stamp,chosen,temp,model,now.tzinfo),1))
     cold_soon=temperature_at(stamp,stamp+3600,temp,model,now.tzinfo)-max(.5,model.get('validation_error_c_per_hour') or 0)<=floor+1
     if stamp<start and cold_soon and settings.get('thermal_availability'):
+        if context.get('advance_window_end')==end and not continuing_advance:
+            return result|{'status':'Early-charge attempt complete','message':'Do not restart another paid charge for this overnight window; ordinary scheduling and protections remain active.'}
         price=numeric(context.get('price'));spent=context.get('cost',0)
         # Reserve 90 seconds of worst-case charging cost for the next command
         # interval/transfer. This is a supervisory budget, not a hardware cap.

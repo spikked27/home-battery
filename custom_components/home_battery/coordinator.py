@@ -399,6 +399,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
                     forecast.append([stamp.timestamp(),(temp-32)*5/9 if unit=='°F' else temp])
         d['thermal_context']={'model':self.thermal.model(now.tzinfo),'charge_amps':amps,
             'started_window_end':self.thermal.started_window_end,'budget_uncertain':self.thermal.budget_uncertain,
+            'advance_window_end':self.thermal.advance_window_end,'advance_active':self.thermal.advance_active,
             'cost':self.thermal.cost if self.thermal.day==now.date().isoformat() else 0.,
             'energy':self.thermal.energy if self.thermal.day==now.date().isoformat() else 0.,
             'weather':forecast,'price':rates[price_window(now,self.settings)] if rates else None}
@@ -488,6 +489,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
         d,plan,rates,period=self.recompute()
         if self.settings.get('thermal_enabled') and plan.decision=='Charge':
             self.thermal.started_window_end=self.data.get('thermal',{}).get('window_end')
+        self.thermal.advance_active=plan.decision=='Cold-weather charge'
+        if self.thermal.advance_active:
+            self.thermal.advance_window_end=self.data.get('thermal',{}).get('window_end')
         self.thermal.observe(now,d,self.settings,rates[period] if rates else None,plan.decision=='Cold-weather charge')
         # Stop permission is independent of manual holds, automatic scheduling,
         # economics and source-transition cooldown. Never switch output to do it.

@@ -101,6 +101,21 @@ class ThermalTests(unittest.TestCase):
         result=preview(now,self.d,self.s,self.rates,9,54)
         overnight=[s for s in result['segments'] if s['action']=='charge' and s['start']>=t.next_window(now,self.s)[0]]
         self.assertTrue(overnight,'A daytime utility-charge stop cannot suppress tomorrow\'s valid charge permission')
+    def test_one_advance_can_continue_to_target_but_cannot_rearm(self):
+        now=self.now.replace(hour=20);self.d['cold_temperature']=9;self.c['model']['cooling_c_per_hour']=[-1]*24
+        end=t.next_window(now,self.s)[1]
+        self.c.update(advance_active=True,advance_window_end=end)
+        self.d['soc']=92
+        self.assertTrue(self.advice(now)['early_charge'],'Do not terminate a running advance at target minus five')
+        self.c['advance_active']=False;self.d['soc']=89
+        self.assertFalse(self.advice(now)['early_charge'],'Do not restart paid charging as SOC falls again')
+    def test_cold_morning_preview_has_no_repeated_paid_charge_pulses(self):
+        self.d.update(soc=89.6,scheduled_charge_block=True,cold_temperature=13,mode='Battery',priority='SBU',discharge_w=76)
+        now=self.now.replace(hour=10)
+        result=preview(now,self.d,self.s,self.rates,9,54)
+        night_end=t.next_window(now,self.s)[1]
+        paid=[r for r in result['segments'] if r['action']=='charge' and r['start']>=night_end]
+        self.assertLessEqual(len(paid),1,'One paid attempt can finish needed charging, not cycle around a threshold')
     def test_preview_does_not_pulse_charge_after_it_has_started(self):
         r=preview(self.now,self.d,self.s,self.rates,9,54)
         phases=[row['action'] for row in r['segments'] if row['start']<t.next_window(self.now,self.s)[1]]

@@ -1,3 +1,9 @@
+# 1.9.3
+
+- Keep a started paid cold-weather charge stable above target-minus-five until the normal target, temperature/other protection, or cost budget stops it.
+- Persist one advance-attempt marker per upcoming overnight window so falling SOC cannot repeatedly re-arm paid charging. The preview uses the same marker and continuous-charge semantics.
+- Includes v1.9.2's missing overnight-block fix and separation of live schedule stops from battery protection. Regression coverage includes a cold morning with no repeated paid-charge pulses.
+
 # 1.9.2
 
 - Fix missing overnight charge blocks after adding cold-weather scheduling. A live daytime charge-stop flag must not become a battery protection reason copied through every future forecast interval.
