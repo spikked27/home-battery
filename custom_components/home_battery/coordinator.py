@@ -46,7 +46,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.sources=dict(entry.data)|dict(entry.options)
         detected=suggested_sources(hass)
         if not self.sources.get('cold_temperature_entity'):
-            self.sources['cold_temperature_entity']=(detected.get('cold_temperature_entity') if detected.get('soc_entity')==self.sources.get('soc_entity') else None) or self.sources.get('temperature_entity')
+            self.sources['cold_temperature_entity']=(detected.get('cold_temperature_entity') if detected.get('soc_entity')==self.sources.get('soc_entity') else None) or self.sources.get('temperature_entity') or ''
         self.thermal=ThermalHistory();self.thermal_attempt=0
         self.data={}
         self.transfer_status=""
@@ -171,7 +171,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         return 0<=time.time()-self.received.get(key,0)<age
 
     def entity_number(self,key,units=None):
-        state=self.hass.states.get(self.sources.get(key,""))
+        state=self.hass.states.get(self.sources.get(key) or "")
         if not state or state.state in {"unknown","unavailable"}: return None
         stamp=getattr(state,"last_reported",state.last_updated)
         heartbeat="load_heartbeat_topic" if key=="load_entity" else "battery_heartbeat_topic"
