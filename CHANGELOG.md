@@ -1,3 +1,8 @@
+# 1.9.1
+
+- Validate held-out passive temperature intervals against an hourly cooling profile fitted only to earlier observations, then fit the operational profile to all history.
+- Explain when the chosen charging time is earlier than the coldest candidate because the predicted temperature and uncertainty approach the charging floor.
+
 # 1.9.0
 
 - Add optional temperature-aware timing of needed overnight charging. Learn passive cooling from up to seven days of Celsius-normalized recorder statistics and live samples, with held-out rate checks. Normal charging continues while learning.

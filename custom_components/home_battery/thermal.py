@@ -61,7 +61,12 @@ class ThermalHistory:
         # an association only and never subtracted from projected cooling.
         cut=max(1,int(len(passive)*.8));train=passive[:cut];test=passive[cut:]
         base=median(v for _,v in train) if train else 0.
-        error=median(abs(v-base) for _,v in test) if test else None
+        train_bins={h:[] for h in range(24)}
+        for stamp,value in train:train_bins[datetime.fromtimestamp(stamp,zone).hour].append(value)
+        def prediction(stamp):
+            values=train_bins[datetime.fromtimestamp(stamp,zone).hour]
+            return min(0,max(-2,median(values) if len(values)>=2 else base))
+        error=median(abs(v-prediction(stamp)) for stamp,v in test) if test else None
         covered=sum(min(1,(b[0]-a[0])/3600) for a,b in zip(self.samples,self.samples[1:]) if .15<=(b[0]-a[0])/3600<=1.25 and max(a[2],b[2])<50)
         ready=covered>=12 and len(test)>=3 and error is not None and error<=.75
         cooling=[min(0,max(-2,median(bins[h]) if len(bins[h])>=2 else base)) for h in range(24)]
@@ -136,6 +141,7 @@ def thermal_advice(now, data, settings, context=None):
         nearby=min(weather,key=lambda r:abs(r[0]-middle)) if weather else None
         return nearby[1] if nearby and abs(nearby[0]-middle)<=7200 else temperature_at(stamp,middle,temp,model,now.tzinfo)
     chosen=min(candidates,key=lambda t:(score(t),-t)) if candidates else available
+    coldest_candidate=chosen
     uncertainty=max(.5,(model.get('validation_error_c_per_hour') or 0)*max(0,chosen-stamp)/3600)
     # Start before any predicted cold-boundary crossing, with an additional
     # half hour of lead time. No speculative heating is credited.
@@ -153,5 +159,7 @@ def thermal_advice(now, data, settings, context=None):
         return result|{'status':'Charge before cold limit' if allowed else 'Early-charge budget unavailable',
             'early_charge':allowed,'message':'Advance needed charging before the predicted cold boundary; target and protections still apply.' if allowed else 'Early charging needs a valid price and remaining daily budget. A heater may be needed.'}
     waiting=start<=stamp<chosen
-    return result|{'status':'Waiting for colder hours' if waiting else 'Cold-aware charging planned',
-        'message':'Needed charging is timed for colder hours with completion and temperature margins; no heating benefit is assumed.'}
+    advanced=chosen<coldest_candidate
+    return result|{'status':'Waiting for colder hours' if waiting else 'Earlier charge for cold margin' if advanced else 'Cold-aware charging planned',
+        'cold_boundary_advanced':advanced,
+        'message':'Start earlier than the coldest period because the predicted temperature and its uncertainty approach the charging floor. No warming benefit is assumed.' if advanced else 'Needed charging is timed for colder hours with completion and temperature margins; no heating benefit is assumed.'}

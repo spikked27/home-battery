@@ -82,6 +82,15 @@ class ThermalTests(unittest.TestCase):
         restored=t.ThermalHistory(restored.saved());restored.observe(self.now+timedelta(minutes=5),self.d,self.s,.2,False)
         self.assertTrue(restored.budget_uncertain)
         restored.observe(self.now+timedelta(days=1),self.d,self.s,.2,False);self.assertEqual(restored.cost,0);self.assertFalse(restored.budget_uncertain)
+    def test_validation_uses_earlier_hourly_cooling_profile(self):
+        h=t.ThermalHistory();value=16
+        for hour in range(120):
+            when=self.now.replace(hour=0)+timedelta(hours=hour)
+            h.samples.append([when.timestamp(),value,0])
+            value+=-.2 if when.hour<8 else 0
+        model=h.model(self.now.tzinfo)
+        self.assertTrue(model['ready'])
+        self.assertLess(model['validation_error_c_per_hour'],.01)
     def test_timing_stop_does_not_wait_for_source_switch(self):
         self.d['scheduled_charge_block']=True
         self.assertIn('deferred',guard.ChargeGuard().evaluate(self.d,self.s,0))
