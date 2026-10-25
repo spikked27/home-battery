@@ -26,6 +26,8 @@ from .policy import cell_extremes, plan_with_reserve_hold, money_rates, numeric,
 from .projection import project_savings
 from .learning import learn_load,HISTORY_DAYS
 from .schedule import preview_schedule
+from .thermal import ThermalHistory, thermal_advice
+from .discovery import suggested_sources
 
 LOGGER=logging.getLogger(__name__)
 # Two captured handovers took approximately ten minutes from utility entry.
@@ -42,6 +44,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.settings['learning_history_days']=int(self.settings['learning_history_days'])
         self.settings['planning_goal']=normalize_planning_goal(self.settings['planning_goal'])
         self.sources=dict(entry.data)|dict(entry.options)
+        detected=suggested_sources(hass)
+        if not self.sources.get('cold_temperature_entity'):
+            self.sources['cold_temperature_entity']=(detected.get('cold_temperature_entity') if detected.get('soc_entity')==self.sources.get('soc_entity') else None) or self.sources.get('temperature_entity')
+        self.thermal=ThermalHistory();self.thermal_attempt=0
         self.data={}
         self.transfer_status=""
         self.source_transfer=None
@@ -116,6 +122,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         self.source_intent=saved.get("source_intent")
         self.charge_guard=ChargeGuard(saved.get("charge_guard"))
         self.guard_stop_failed=saved.get("guard_stop_failed",False)
+        if saved.get('thermal_source')==self.sources.get('cold_temperature_entity'):
+            self.thermal=ThermalHistory(saved.get('thermal'))
         if self.source_intent:
             self.source_transfer=None
             self.command_error="Source change interrupted by restart; inspect actual source and stored settings in Advanced before acknowledging. No commands replayed."
@@ -183,8 +191,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
             ("charge_w","charge_power_entity",{"W","kW"}),("discharge_w","discharge_power_entity",{"W","kW"}),
             ("voltage","voltage_entity",{"V"}),("current","current_entity",{"A"}),
             ("temperature","temperature_entity",{UnitOfTemperature.CELSIUS,UnitOfTemperature.FAHRENHEIT}),("remaining_ah","remaining_ah_entity",{"Ah"}),
+            ("cold_temperature","cold_temperature_entity",{UnitOfTemperature.CELSIUS,UnitOfTemperature.FAHRENHEIT}),
             ("energy_in","energy_in_entity",{"kWh","Wh"}),("energy_out","energy_out_entity",{"kWh","Wh"})]}
         raw=self.topics.get("raw_readings",{})
+        d['cold_temperature_source']=self.sources.get('cold_temperature_entity')
         mode=raw.get("HSTS",{}).get("ascii","") if isinstance(raw,dict) else ""
         tokens=mode.lstrip("(").split()
         d["mode"]={"L":"Line","B":"Battery"}.get(tokens[1][0] if len(tokens)>1 and tokens[1] else "","Unknown")
@@ -301,6 +311,18 @@ class BatteryCoordinator(DataUpdateCoordinator):
         return pseg_rates(now,self.supply)
 
     async def fetch_context(self,now):
+        if self.settings.get('thermal_enabled') and time.time()-self.thermal_attempt>=3600:
+            self.thermal_attempt=time.time()
+            try:
+                from homeassistant.components.recorder import get_instance
+                from homeassistant.components.recorder.statistics import statistics_during_period
+                temp=self.sources.get('cold_temperature_entity');power=self.sources.get('charge_power_entity')
+                if temp and power:
+                    rows=await get_instance(self.hass).async_add_executor_job(partial(statistics_during_period,
+                        self.hass,now-timedelta(days=7),now,{temp,power},'hour',{'temperature':'°C','power':'W'},{'mean'}))
+                    self.thermal.seed(rows.get(temp,[]),rows.get(power,[]))
+            except Exception as err:
+                LOGGER.debug('Thermal history unavailable: %s',type(err).__name__)
         if time.time()-self.profile_attempt>=900:
             self.profile_attempt=time.time()
             try:
@@ -365,7 +387,26 @@ class BatteryCoordinator(DataUpdateCoordinator):
     def recompute(self):
         now=self.local_now();d=self.measurements();storm,weather_mode=self.storm();rates=self.prices(now)
         self._update_source_transfer(d)
+        values=[numeric(str(self.topics.get(f'control/{key}/state','')).split(' ')[0]) for key in ('utility_charge_current','total_charge_current')]
+        amps=min(values) if all(v is not None for v in values) else None
+        weather=self.hass.states.get(self.sources.get('weather_entity',''))
+        unit=weather.attributes.get('temperature_unit') if weather else None
+        forecast=[]
+        if time.time()-self.forecast_time<3600:
+            for row in self.weather_forecast:
+                stamp=dt_util.parse_datetime(row.get('datetime',''));temp=numeric(row.get('temperature'))
+                if stamp and temp is not None and unit in {'°C','°F'}:
+                    forecast.append([stamp.timestamp(),(temp-32)*5/9 if unit=='°F' else temp])
+        d['thermal_context']={'model':self.thermal.model(now.tzinfo),'charge_amps':amps,
+            'started_window_end':self.thermal.started_window_end,'budget_uncertain':self.thermal.budget_uncertain,
+            'cost':self.thermal.cost if self.thermal.day==now.date().isoformat() else 0.,
+            'energy':self.thermal.energy if self.thermal.day==now.date().isoformat() else 0.,
+            'weather':forecast,'price':rates[price_window(now,self.settings)] if rates else None}
+        thermal=thermal_advice(now,d,self.settings,d['thermal_context'])
         plan,held=plan_with_reserve_hold(now,d,self.settings,rates,storm,self.reserve_hold)
+        d['scheduled_charge_block']=bool(self.settings.get('thermal_enabled') and self.settings['automatic_enabled']
+            and time.time()>=self.hold_until
+            and plan.decision not in {'Recharge','Recover reserve','Charge','Keep ready','Cold-weather charge'})
         if held!=self.reserve_hold:
             self.reserve_hold=held;self.save()
         d['reserve_hold']=held
@@ -373,6 +414,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         extreme=cell_extremes(d["cells"])
         charge_reason=self.charge_guard.evaluate(d,self.settings,time.time())
         data=dict(d,**(extreme or {}),plan=plan.decision,reason=plan.reason,reserve_soc=plan.reserve_soc,
+                  thermal=thermal,thermal_status=thermal['status'],thermal_early_charge_cost=thermal.get('cost_today',0),
                   runtime_hours=plan.runtime_hours,economic_margin=plan.economic_margin,
                   tariff=period,weather_mode=weather_mode,storm=storm,current_price=rates[period] if rates else None,
                   overnight_price=rates["Super off-peak"] if rates else None,
@@ -388,6 +430,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
             "resume_cell_gap_v":.05,"recovery_seconds":180,
             "scope":"Utility charging only; HA/MQTT required; does not replace BMS or inhibit PV"}
         self.attributes["alarms"]={"codes":d["alarm_codes"],"soc_warning_only":d["soc_warning_only"]}
+        self.attributes['thermal_status']=thermal
+        self.attributes['thermal_early_charge_cost']={'scope':'Measured grid charging cost during cold-weather advances only; excludes ordinary overnight charging','supervisory_budget':True}
         data["estimated_savings_total"]=self.ledger["avoided"]-self.ledger["charging"]-self.ledger["wear"]
         for kind,key in (("day",now.strftime("%Y-%m-%d")),("month",now.strftime("%Y-%m")),("year",now.strftime("%Y"))):
             totals=self.ledger["periods"].get(key,{})
@@ -442,6 +486,9 @@ class BatteryCoordinator(DataUpdateCoordinator):
         await self.fetch_context(now)
         if self.stopped: return
         d,plan,rates,period=self.recompute()
+        if self.settings.get('thermal_enabled') and plan.decision=='Charge':
+            self.thermal.started_window_end=self.data.get('thermal',{}).get('window_end')
+        self.thermal.observe(now,d,self.settings,rates[period] if rates else None,plan.decision=='Cold-weather charge')
         # Stop permission is independent of manual holds, automatic scheduling,
         # economics and source-transition cooldown. Never switch output to do it.
         await self._async_inhibit_charging(d)
@@ -479,7 +526,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             # Only two confirmed source preferences; never change BMS thresholds or output limits.
             try:
                 if plan.desired_priority=="SUB":
-                    await self.async_source("SUB",automatic=True,allow_charging=plan.decision in {"Recharge","Recover reserve","Charge","Keep ready"})
+                    await self.async_source("SUB",automatic=True,allow_charging=plan.decision in {"Recharge","Recover reserve","Charge","Keep ready","Cold-weather charge"})
                 else:
                     await self.async_source(plan.desired_priority,automatic=True)
             except HomeAssistantError as err:
@@ -492,7 +539,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         return {"ledger":self.ledger,"recorded":self.recorded,"hold_until":self.hold_until,
                 "command_error":self.command_error,"source_transfer":self.source_transfer,
                 "source_intent":self.source_intent,"last_switch":self.last_switch,
-                "charge_guard":self.charge_guard.saved(),"guard_stop_failed":self.guard_stop_failed,"reserve_hold":self.reserve_hold}
+                "charge_guard":self.charge_guard.saved(),"guard_stop_failed":self.guard_stop_failed,"reserve_hold":self.reserve_hold,
+                "thermal":self.thermal.saved(),"thermal_source":self.sources.get('cold_temperature_entity')}
 
     async def _async_inhibit_charging(self,d):
         reason=self.charge_guard.evaluate(d,self.settings,time.time())

@@ -5,6 +5,8 @@ from .const import DOMAIN
 from .entity import BatteryEntity
 
 SENSORS={
+ "thermal_status":("Cold-weather charging",None,None,None),
+ "thermal_early_charge_cost":("Cold-weather early charging cost today","USD","monetary",None),
  "soc":("Battery state of charge","%","battery","measurement"),
  "load_w":("Critical-load power","W","power","measurement"),
  "charge_w":("Battery charging power","W","power","measurement"),

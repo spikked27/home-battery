@@ -10,6 +10,10 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
     SOC/capacity and constant monthly prices remain modelling assumptions; cell
     limits, protection trips, switching delays and HA outages are not simulated.
     """
+    # Long-run reference figures cannot assume tonight's temperature/weather
+    # repeats all year. Thermal advances are disclosed separately in the UI;
+    # their actual charging cost remains in the recorded operation ledger.
+    settings=dict(settings,thermal_enabled=False)
     if len(hourly_w)!=24 or any(numeric(v) is None or not 0<=v<=10000 for v in hourly_w):
         return None
     if not rates or numeric(charge_amps) is None or charge_amps<0 or numeric(pack_voltage) is None or not 20<=pack_voltage<=70:

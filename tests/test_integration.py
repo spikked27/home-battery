@@ -41,6 +41,34 @@ async def test_source_units_are_validated(hass):
     hass.states.async_set("sensor.kw",.5,{"unit_of_measurement":"kW"})
     assert validate_sources(hass,{"load_entity":"sensor.kw"})=={}
 
+async def test_cold_probe_converts_fahrenheit_and_rejects_stale_values(hass,coordinator):
+    coordinator.sources['cold_temperature_entity']='sensor.cold_probe'
+    hass.states.async_set('sensor.cold_probe',53.6,{'unit_of_measurement':'°F'})
+    assert coordinator.measurements()['cold_temperature']==pytest.approx(12)
+    hass.states.async_set('sensor.cold_probe','unavailable',{'unit_of_measurement':'°F'})
+    assert coordinator.measurements()['cold_temperature'] is None
+
+async def test_thermal_timing_stop_bypasses_source_cooldown(coordinator):
+    import time
+    from custom_components.home_battery.charge_guard import CHARGE_ON,CHARGE_OFF
+    coordinator.settings['thermal_enabled']=True
+    coordinator.topics['control/charger_priority/state']=CHARGE_ON
+    coordinator.last_switch=time.time();coordinator.start_time-=100
+    d=dict(coordinator.measurements(),cold_temperature=15,scheduled_charge_block=True)
+    with patch.object(coordinator,'async_control',new_callable=AsyncMock) as control:
+        await coordinator._async_inhibit_charging(d)
+    assert control.call_args.args[:2]==('charger_priority',CHARGE_OFF)
+    assert control.call_args.kwargs['charge_inhibit'] is True
+
+async def test_thermal_state_survives_restore_with_same_source(coordinator):
+    coordinator.thermal.day='2026-10-25';coordinator.thermal.cost=.12
+    coordinator.thermal.samples=[[1,15,0],[3601,14.5,0]]
+    coordinator.thermal.started_window_end=100000
+    saved=coordinator._saved_state();coordinator.thermal.cost=0
+    coordinator._restore_state(saved)
+    assert coordinator.thermal.cost==.12
+    assert coordinator.thermal.started_window_end==100000
+
 
 async def test_load_setup_keeps_schedule_for_history_only_and_pauses_for_new_meter(hass,coordinator):
     coordinator.settings['automatic_enabled']=True

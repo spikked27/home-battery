@@ -8,7 +8,7 @@ from homeassistant.helpers import entity_registry as er
 
 DALY_FIELDS={"soc_entity":"soc","charge_power_entity":"battery_charging_power",
     "discharge_power_entity":"battery_discharging_power","voltage_entity":"pack_voltage",
-    "current_entity":"current","temperature_entity":"highest_temperature",
+    "current_entity":"current","temperature_entity":"highest_temperature","cold_temperature_entity":"lowest_temperature",
     "remaining_ah_entity":"remaining_capacity","energy_in_entity":"battery_energy_in",
     "energy_out_entity":"battery_energy_out","alarms_entity":"alarms"}
 CONTROL_IDS={"charge_mosfet","discharge_mosfet","set_board_number","set_inverter_protocol","disable_sleep","restart"}

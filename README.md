@@ -121,3 +121,16 @@ HACS handles version updates. Preferences and accounting are stored by HA; dashb
 See [feature support](docs/support.md), [migration](docs/migration.md), [development](docs/development.md) and [changelog](CHANGELOG.md).
 
 Outside the low-price charging window, small reserve fluctuations within the backup estimate allowance use utility without charging. Discretionary battery use still stops at the calculated reserve. Recovery charging is permitted only when estimated remaining backup falls below the requested hours, or storm readiness requires it. The allowance is extra planning headroom, not a second user reserve minimum.
+
+
+## Cold-weather charging
+
+In Backup plan, enable **Temperature-aware charging** to align needed charging with colder useful hours of the configured overnight window. The selected coldest battery probe drives charge permission; weather only helps choose timing. Daly minimum probes are discovered by the selected battery device's stable identity, including renamed entities. Other installations can choose **Coldest battery temperature** in integration options. If no minimum probe is available, the selected temperature source is used and shown explicitly.
+
+The model reads seven days of hourly battery temperature and charging-power statistics in Celsius/W, then continues collecting live samples. It uses passive intervals with bounded gaps and checks its cooling-rate prediction against held-out observations. While history is insufficient or noisy, ordinary charging remains active. The planner does not credit speculative self-heating. It keeps a started overnight charge stable and begins earlier if cooling predicts a cold boundary or remaining charging time is tight. Completion times remain estimates.
+
+**Prioritize cold-weather availability** permits needed charging before cheap hours only when a learned cold boundary is approaching. The default early-charge cost cap is USD 0.25 per local calendar day; zero disables paid advances. The measured cost/energy and model survive restart. Charge inhibition does not wait for source-switch cooldown. Unknown cost during a long interrupted early-charge interval suspends further paid advances for that day. This is a supervisory estimate, not a hardware spending guarantee; HA/MQTT/bridge availability remains required.
+
+The default software charging floor is 8°C. Configure it above your BMS cutoff and for your actual cells/probe placement. Missing or cold battery temperatures inhibit utility charging. This cannot stop PV, heat an already-cold pack, override BMS protection, command an arbitrary discharge current, or force MOSFETs. No current limits or inverter/BMS protection settings are changed. No deliberate charge/discharge cycling is used for warmth. An appropriately controlled enclosure heater is needed if natural warming and scheduled charging are insufficient.
+
+Overview and Weather show status, probe temperature, planned start and early-charge spending. Backup plan contains controls and model diagnostics. Observed temperature change during charging is an association, not a proven heating effect. Long-run savings projections exclude unpredictable weather-dependent advances; the recorded operation ledger includes actual charging costs.

@@ -194,6 +194,14 @@ assert.equal(timelinePanel.selectedScheduleIndex(splitUtility),1,'Retain a selec
 assert.equal(groupPeriods({segments:[splitUtility.segments[1],{...splitUtility.segments[2],start:start+7300}]}).length,2,'Do not bridge missing forecast time');
 console.log('10 action-based timeline grouping checks passed');
 
+const coldPanel=Object.assign(Object.create(Panel.prototype),{model:{settings:{thermal_enabled:true,thermal_extra_budget:.25}},field:key=>`control:${key}`});
+const coldCard=coldPanel.thermalCard({thermal:{status:'Waiting for colder hours',temperature_c:12,delay_until:start,cost_today:.02,message:'Needed charging only',model:{passive_hours:40,heat_credit_used:false}}});
+assert(coldCard.includes('12 °C')&&coldCard.includes('Waiting for colder hours'),'Put measured temperature beside cold-weather status');
+assert(coldCard.includes('thermal_enabled')&&coldCard.includes('thermal_availability')&&coldCard.includes('thermal_extra_budget'),'Show timing, availability and spending controls together');
+assert(coldCard.includes('no predicted heating')&&coldCard.includes('No discharge-current commands'),'Do not imply heating or arbitrary discharge control');
+assert(!coldPanel.thermalCard({thermal:{}},true).includes('control:'),'Compact main/weather card does not duplicate configuration controls');
+console.log('4 cold-weather dashboard checks passed');
+
 const scheduleOff=Panel.prototype.transferNotice.call({}, {scheduler_status:'Observe only'});
 assert(scheduleOff.includes('Automatic scheduling is off')&&scheduleOff.includes('scheduled source changes will not run'),'Do not confuse a recommendation with an enabled schedule');
 const costPanel=Object.assign(Object.create(Panel.prototype),{field:()=>'',model:{settings:{commissioned:false,capacity_kwh:5.2,charge_target:95},attributes:{projected_savings_day:{baseline_cost_day:1.65,operating_cost_day:1.35,load_kwh_day:7.16,shifted_kwh_day:3.1,charge_limit_a:9}}}});

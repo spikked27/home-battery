@@ -22,7 +22,7 @@ def source_schema(current):
     for key, device in [("soc_entity","battery"),("load_entity","power"),
                         ("charge_power_entity","power"),("discharge_power_entity","power"),
                         ("voltage_entity","voltage"),("current_entity","current"),
-                        ("temperature_entity","temperature"),("remaining_ah_entity",None),
+                        ("temperature_entity","temperature"),("cold_temperature_entity","temperature"),("remaining_ah_entity",None),
                         ("energy_in_entity","energy"),("energy_out_entity","energy"),
                         ("alarms_entity",None),("alert_entity",None)]:
         filt = {"domain":"sensor"}
@@ -43,6 +43,11 @@ def source_schema(current):
 def validate_sources(hass,data):
     units={"soc_entity":{"%"},"load_entity":{"W","kW"},"charge_power_entity":{"W","kW"},"discharge_power_entity":{"W","kW"},"voltage_entity":{"V"},"current_entity":{"A"},"temperature_entity":{"°C","°F"},"remaining_ah_entity":{"Ah"},"energy_in_entity":{"kWh","Wh"},"energy_out_entity":{"kWh","Wh"}}
     errors = {}
+    cold=data.get('cold_temperature_entity')
+    if cold:
+        state=hass.states.get(cold)
+        if not state or state.attributes.get('unit_of_measurement') not in {'°C','°F'} or cold.startswith('sensor.home_battery_'):
+            errors['cold_temperature_entity']='invalid_source'
     if 'learning_history_days' in data and str(data['learning_history_days']) not in {str(d) for d in HISTORY_DAYS}:
         errors['learning_history_days']='invalid_history'
     for key,expected in units.items():

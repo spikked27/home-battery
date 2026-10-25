@@ -1,3 +1,11 @@
+# 1.9.0
+
+- Add optional temperature-aware timing of needed overnight charging. Learn passive cooling from up to seven days of Celsius-normalized recorder statistics and live samples, with held-out rate checks. Normal charging continues while learning.
+- Prefer colder useful hours, retaining completion margin; start before predicted cold-limit crossings. Once overnight charging starts, keep it stable. Reserve, storm readiness, charge targets, cell limits and BMS protection remain authoritative.
+- Optional cold-weather availability advances needed charging outside cheap hours under a persistent daily cost cap. Stop permission bypasses source-switch cooldown; uncertain interrupted accounting suspends further paid advances for the day.
+- Auto-detect the coldest probe on the selected known Daly device; expose a configurable cold-temperature source, charging floor, controls and diagnostic entities. Add clear status on Overview, Backup plan and Weather while preserving radar and branding.
+- No deliberate thermal cycling, forced discharge, increased charging current, heater control or BMS writes. Charging-temperature associations are measured but no heating benefit is credited to forecasts. Long-run savings projections exclude weather-dependent advances; actual charging remains in recorded costs.
+
 # 1.8.6
 
 - Simplify the 24-hour timeline to one block per continuous action. Adjacent utility, battery or charging periods no longer split merely because the controller's explanation or tariff changes.

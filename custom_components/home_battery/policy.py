@@ -117,7 +117,15 @@ def make_plan(now, data, settings, rates, storm=False):
     if storm:
         return Plan("Keep ready","Storm reserve advised", "SUB",reserve,runtime)
     window = price_window(now,settings)
+    thermal={'enabled':False}
+    if settings.get('thermal_enabled'):
+        from .thermal import thermal_advice
+        thermal=thermal_advice(now,data,settings,data.get('thermal_context'))
+    if in_charge_window(now,settings) and thermal['enabled'] and thermal['status'] in {'Too cold to charge','Temperature unavailable'}:
+        return Plan('Cold hold',thermal['message'],'SUB',reserve,runtime)
     if in_charge_window(now,settings):
+        if thermal.get('delay_until',0) and now.timestamp()<thermal['delay_until'] and soc>reserve:
+            return Plan('Wait to charge','Use utility now; needed charging is scheduled for colder overnight hours','SUB',reserve,runtime)
         return Plan("Charge" if soc < settings["charge_target"] else "Target reached",
                     "Low-price charge window" if soc < settings["charge_target"] else "Charge target reached; use utility with utility charging disabled",
                     "SUB",reserve,runtime)
@@ -127,6 +135,8 @@ def make_plan(now, data, settings, rates, storm=False):
         return Plan("Hold reserve","Requested backup time is covered; use utility without topping up the planning allowance until the next low-price window", "SUB",reserve,runtime)
     if data.get('reserve_hold') or soc<=reserve+1e-6:
         return Plan("Hold reserve","Daily battery allocation used; keep utility until the next low-price charging window", "SUB",reserve,runtime)
+    if thermal.get('early_charge'):
+        return Plan('Cold-weather charge','Advance needed charging before the predicted cold boundary, within the daily cost cap','SUB',reserve,runtime)
     if not rates:
         return Plan("Hold reserve","Electricity prices unavailable; economics cannot be assessed", "SUB",reserve,runtime)
     margin = rates[window] - rates["Super off-peak"]*demand/max(load,1)/(settings["charge_efficiency"]/100) - settings["wear_cost"]*demand/max(load,1)

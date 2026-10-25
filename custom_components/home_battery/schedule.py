@@ -6,6 +6,7 @@ from datetime import datetime
 import math
 from .policy import plan_with_reserve_hold, numeric, price_window, planning_profile
 from .charge_guard import ChargeGuard
+from .thermal import next_window, temperature_at
 
 
 def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=None,error_w=0,storm=False,guard=None):
@@ -35,8 +36,12 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
     reserve_hold=bool(data.get('reserve_hold'))
     idle_dc=max(0,data['discharge_w']-data['charge_w']) if data.get('mode')=='Line' else 0
     stamp=now.timestamp()
+    thermal_context=dict(data.get('thermal_context') or {})
+    thermal_day=now.date()
     while stamp<result['end']:
         when=datetime.fromtimestamp(stamp,now.tzinfo)
+        if when.date()!=thermal_day:
+            thermal_context.update(cost=0,budget_uncertain=False);thermal_day=when.date()
         stop=min(result['end'],(math.floor(stamp/900)+1)*900)
         hours=(stop-stamp)/3600
         watts=weekly[str(when.weekday())][when.hour] if weekly else load
@@ -45,22 +50,27 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
                        charge_w=0.,discharge_w=demand if priority=='SBU' else 0.,priority=priority)
         # Keep the first decision identical to the live policy; later steps are estimates.
         if stamp==result['start']: projected=dict(data)
+        if projected.get('thermal_context'):
+            projected['thermal_context']=dict(thermal_context,price=rates[price_window(when,settings)])
+            projected['cold_temperature']=temperature_at(now.timestamp(),stamp,data.get('cold_temperature'),thermal_context.get('model',{}),now.tzinfo)
         if weekly and stamp!=result['start']:
             start,end=(15,19) if settings['price_source']=='PSEG Rate 195' else (settings['peak_start'],settings['peak_end'])
             uncertainty=max(0,error_w)*planning_profile(settings)['forecast_error_multiplier']
             projected['peak_forecast_wh']=sum(((v+uncertainty)/(settings['discharge_efficiency']/100)+settings['overhead_w'])*max(0,min(h+1,end)-max(h,start)) for h,v in enumerate(weekly[str(when.weekday())]))
         else: projected['peak_forecast_wh']=None
         plan,reserve_hold=plan_with_reserve_hold(when,projected,settings,rates,storm,reserve_hold)
+        if settings.get('thermal_enabled') and plan.decision=='Charge':
+            thermal_context['started_window_end']=next_window(when,settings)[1]
         if plan.desired_priority is None:
             return result|{'segments':[],'points':[],'message':plan.reason}
         priority=plan.desired_priority
         charge_reason=preview_guard.evaluate(projected,settings,stamp)
-        charge_requested=plan.decision in {'Recharge','Recover reserve','Charge','Keep ready'}
+        charge_requested=plan.decision in {'Recharge','Recover reserve','Charge','Keep ready','Cold-weather charge'}
         allow_charge=not charge_reason and charge_requested
         # A small rise in forecast demand may require a short reserve top-up.
         # Match the live 30-second decision cadence rather than charging for an
         # entire 15-minute bucket and falsely adding several SOC points.
-        if allow_charge and plan.decision=='Recharge':
+        if allow_charge and plan.decision in {'Recharge','Cold-weather charge'}:
             stop=min(stop,stamp+30)
             hours=(stop-stamp)/3600
         before=energy/cap*100
@@ -74,6 +84,8 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
             net_charge=max(0,min(charge_w,headroom*settings['charge_efficiency']/100)-idle_dc)
             charged=min(max(0,target-energy),net_charge*hours) if allow_charge else 0
             if charged>0: action='charge'
+            if charged>0 and plan.decision=='Cold-weather charge':
+                thermal_context['cost']=thermal_context.get('cost',0)+charged/1000/(settings['charge_efficiency']/100)*rates[price_window(when,settings)]
             energy=max(0,min(cap,energy+charged-(idle_dc*hours if charged<=0 else 0)))
         after=energy/cap*100
         tariff=price_window(when,settings)

@@ -32,7 +32,8 @@
           "battery_heartbeat_topic": "BMS live numeric/timestamp MQTT topic (recommended)",
           "load_heartbeat_topic": "Load meter live numeric/timestamp MQTT topic (recommended)",
           "nws_alert_zone": "NWS alert zone (optional, e.g. NYZ080); supersedes external alert sensor",
-          "learning_history_days": "Learn from previous readings"
+          "learning_history_days": "Learn from previous readings",
+          "cold_temperature_entity": "Coldest battery temperature (optional; auto-detected for Daly)"
         }
       }
     },
@@ -71,7 +72,8 @@
           "battery_heartbeat_topic": "BMS live numeric/timestamp MQTT topic (recommended)",
           "load_heartbeat_topic": "Load meter live numeric/timestamp MQTT topic (recommended)",
           "nws_alert_zone": "NWS alert zone (optional, e.g. NYZ080); supersedes external alert sensor",
-          "learning_history_days": "Learn from previous readings"
+          "learning_history_days": "Learn from previous readings",
+          "cold_temperature_entity": "Coldest battery temperature (optional; auto-detected for Daly)"
         }
       }
     },
