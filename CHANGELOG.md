@@ -1,3 +1,9 @@
+# 1.8.5
+
+- Keep an inspected schedule period selected until another period is activated. Touch panning, pointer-enter events after layout changes, and restored focus no longer overwrite the selection. Hover retains the native tooltip.
+- Preserve timeline selection and horizontal position across Home Assistant panel recreation and temporary forecast gaps; keep separate state for each integration entry.
+- Avoid redundant focus restoration and restore horizontal position after focus. Planning and inverter control behavior are unchanged.
+
 # 1.8.4
 
 - Preserve the requested outage duration while avoiding expensive routine top-ups of the extra planning allowance. Hold utility without charging when the requested hours remain covered; recharge normally during the cheap window. Genuine duration shortfalls and storm readiness retain recovery charging.

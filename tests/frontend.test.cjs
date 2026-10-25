@@ -207,7 +207,7 @@ const inspectionRoot={activeElement:null,
  querySelector:q=>q==='.schedule-scroll'?regionNode:q==='[data-schedule-detail]'?detailNode:q.startsWith('[data-schedule-step=')?timelineNodes[Number(q.match(/"(\d+)"/)[1])]:null
 };
 Object.defineProperty(inspectionRoot,'innerHTML',{get:()=>rootHTML,set:v=>{
- rootHTML=v;inspectionRoot.activeElement=null;regionNode={scrollLeft:0};detailNode={textContent:''};
+ rootHTML=v;inspectionRoot.activeElement=null;regionNode=inspection.model.data.schedule_preview.segments.length?{scrollLeft:0}:null;detailNode={textContent:''};
  timelineNodes=inspection.model.data.schedule_preview.segments.map((_,i)=>({
   dataset:{scheduleStep:String(i)},attrs:{},tagName:'BUTTON',
   hasAttribute:name=>name==='data-schedule-step',setAttribute(k,v){this.attrs[k]=v;},
@@ -217,6 +217,11 @@ Object.defineProperty(inspectionRoot,'innerHTML',{get:()=>rootHTML,set:v=>{
 inspection.shadowRoot=inspectionRoot;inspectionRoot.innerHTML='initial';inspection.bindSchedule();
 timelineNodes[1].onclick();regionNode.scrollLeft=320;inspectionRoot.activeElement=timelineNodes[1];
 const selectedClock=inspection.scheduleSelectedTime;
+timelineNodes[0].onpointerenter?.({pointerType:'touch'});
+assert.equal(inspection.scheduleSelectedTime,selectedClock,'A touch/layout pointer-enter must not overwrite an explicitly selected future period');
+timelineNodes[0].onpointerenter?.({pointerType:'mouse'});
+timelineNodes[0].onfocus?.();
+assert.equal(inspection.scheduleSelectedTime,selectedClock,'Hover and restored focus cannot change an explicit selection');
 inspection.render();
 assert.equal(regionNode.scrollLeft,320,'A telemetry render must preserve horizontal timeline position');
 assert.equal(inspection.scrollTop,640,'A telemetry render must preserve page position');
@@ -232,10 +237,29 @@ inspection.render();
 assert.equal(inspection.scheduleSelectedTime,selectedClock,'Keep the inspected clock time when forecast boundaries change');
 assert.equal(timelineNodes[2].attrs['aria-pressed'],'true','Follow the clock time across a split, not the old segment index');
 assert(detailNode.textContent.includes('Charge battery'),'Show the newly forecast action at the selected time');
+inspection.model.data.schedule_preview={segments:[]};
+inspection.render();
+assert.equal(inspection.scheduleSelectedTime,selectedClock,'A temporarily unavailable forecast must not erase the inspected time');
+inspection.model.data.schedule_preview=timeline;
+inspection.render();
+assert.equal(timelineNodes[1].attrs['aria-pressed'],'true','Restore the selected period when forecast data returns');
+assert.equal(regionNode.scrollLeft,320,'Restore horizontal position when forecast data returns');
+
+// A newly created HA panel must recover UI state for this entry without
+// leaking it into another installation. No device settings are involved.
+inspection._panel={config:{entry_id:'timeline-entry'}};
+inspection.scheduleScrollLeft=320;inspection.saveScheduleView();
+const remounted=Object.assign(Object.create(Panel.prototype),{refresh(){}});
+remounted.panel={config:{entry_id:'timeline-entry'}};
+assert.equal(remounted.scheduleSelectedTime,selectedClock,'HA remount preserves the inspected clock time');
+assert.equal(remounted.scheduleScrollLeft,320,'HA remount preserves the timeline scroll offset');
+remounted.panel={config:{entry_id:'another-entry'}};
+assert.equal(remounted.scheduleSelectedTime,null,'Separate entries do not share a selection');
+assert.equal(remounted.scheduleScrollLeft,0,'Separate entries do not share a scroll offset');
 inspection.scheduleSelectedTime=start-10;
 assert.equal(inspection.selectedScheduleIndex(inspection.model.data.schedule_preview),0,'An expired time falls back to the current period');
 assert.equal(inspection.scheduleSelectedTime,null,'Do not keep an expired inspection anchor');
-console.log('9 timeline refresh continuity checks passed');
+console.log('19 timeline refresh, interaction and remount continuity checks passed');
 
 (async()=>{
  const input={tagName:'INPUT',blur(){actionRoot.activeElement=null;}},actionRoot={activeElement:null};

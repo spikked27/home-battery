@@ -1,9 +1,12 @@
 /* Home Battery native custom panel. No CDN, custom Lovelace cards or build step. */
-const PANEL_VERSION='1.8.4';
+const PANEL_VERSION='1.8.5';
 const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=(v,u='',n=1)=>v===null||v===undefined?'—':Number.isFinite(Number(v))?(Math.abs(Number(v))<.5*10**(-n)?0:Number(v)).toLocaleString(undefined,{maximumFractionDigits:n})+u:esc(v);
 const condition=v=>String(v||'Unknown').replace(/-/g,' ').replace('partlycloudy','Partly cloudy').replace(/^./,c=>c.toUpperCase());
 const historyFactor=(key,unit)=>key==='load'&&unit==='kW'?1000:1;
+// UI state belongs to the entry, not a particular panel element. HA can
+// recreate the element when navigating; never let that reset an inspection.
+const scheduleViews=new Map();
 
 // Keep interactive nodes alive during telemetry refreshes. Recreating the
 // scroll container can reset its position after asynchronous stylesheet/layout
@@ -65,7 +68,13 @@ function mergeHistory(recorded,live){
 class HomeBatteryPanel extends HTMLElement {
   constructor(){super();this.attachShadow({mode:'open'});this.tab='overview';this.loading=false;this.error='';this.historyHours=24;}
   set hass(value){this._hass=value;if(!this.timer)this.refresh();}
-  set panel(value){this._panel=value;this.refresh();}
+  set panel(value){
+    if(this._panel?.config?.entry_id!==value?.config?.entry_id){
+      const saved=scheduleViews.get(value?.config?.entry_id);
+      this.scheduleSelectedTime=saved?.time??null;this.scheduleScrollLeft=saved?.left??0;
+    }
+    this._panel=value;this.refresh();
+  }
   connectedCallback(){this.timer=setInterval(()=>this.refresh(),10000);this.refresh();}
   disconnectedCallback(){clearInterval(this.timer);this.timer=null;}
   async refresh(){
@@ -185,7 +194,7 @@ class HomeBatteryPanel extends HTMLElement {
     const header=`<div class="schedule-heading"><div><span class="eyebrow">YOUR ENERGY PLAN</span><h2>Next 24 hours</h2></div><span class="state-badge ${p.status==='Estimated'?'good':'preview'}">${esc(p.status||'Preparing preview')}</span></div>`;
     if(!rows.length)return `<section class="schedule-card">${header}<p class="muted">${esc(p.message||'Waiting for the next fresh planning update.')}</p></section>`;
     const duration=p.end-p.start,first=rows[0],next=rows.find(s=>s.action!==first.action),title=s=>`${this.scheduleLabel(s)} · ${this.scheduleTime(s.start,zone,true,s.end-s.start<60)} – ${this.scheduleTime(s.end,zone,true,s.end-s.start<60)} · estimated battery ${fmt(s.soc_start,'%',0)} → ${fmt(s.soc_end,'%',0)} · ${s.reason}`,point=v=>`${((v.t-p.start)/duration*1000).toFixed(2)},${(74-v.soc*.6).toFixed(2)}`,reserve=v=>`${((v.t-p.start)/duration*1000).toFixed(2)},${(74-v.reserve*.6).toFixed(2)}`,points=p.points||[];
-    return `<section class="schedule-card">${header}<div class="schedule-summary"><b>${this.scheduleLabel(first)} now</b><span>${next?`${this.scheduleLabel(next)} around ${this.scheduleTime(next.start,zone,true)}`:'No source change expected at the current load'}</span></div><div class="schedule-meta"><span>${esc(p.basis)}</span><span>${esc(p.profile)}</span><span>Estimated, not fixed</span></div><div class="schedule-scroll" role="region" aria-label="Anticipated schedule timeline; scroll horizontally on small screens" tabindex="0"><div class="schedule-canvas"><div class="schedule-track" aria-label="Expected energy source by time">${rows.map((s,i)=>{const width=(s.end-s.start)/duration*100;return `<button class="schedule-step ${s.action}" style="flex-basis:${width}%" data-schedule-step="${i}" aria-label="${esc(title(s))}" title="${esc(title(s))}">${width>=9?`<ha-icon icon="${icons[s.action]}"></ha-icon><b>${this.scheduleLabel(s)}</b><small>${esc(s.tariff)}</small>`:''}</button>`;}).join('')}</div><div class="schedule-axis">${[0,4,8,12,16,20,24].map((h,i)=>`<span style="left:${h/24*100}%;transform:translateX(${i===0?0:i===6?-100:-50}%)">${i===0?'Now':this.scheduleTime(p.start+h*3600,zone,i===6)}</span>`).join('')}</div><svg class="schedule-soc" viewBox="0 0 1000 88" preserveAspectRatio="none" role="img" aria-label="Estimated battery percentage and outage reserve over the next 24 hours"><line x1="0" x2="1000" y1="14" y2="14" stroke="currentColor" opacity=".1"/><line x1="0" x2="1000" y1="74" y2="74" stroke="currentColor" opacity=".1"/><polyline points="${points.map(reserve).join(' ')}" fill="none" stroke="#2dd4bf" stroke-dasharray="5 5" stroke-width="1.5" vector-effect="non-scaling-stroke"/><polyline points="${points.map(point).join(' ')}" fill="none" stroke="#c4b5fd" stroke-width="2" vector-effect="non-scaling-stroke"/></svg></div></div><div class="schedule-legend">${Object.entries(labels).map(([key,label])=>`<span><i class="${key}"></i>${label} <b>${fmt(rows.filter(s=>s.action===key).reduce((h,s)=>h+(s.end-s.start)/3600,0),' h',1)}</b></span>`).join('')}</div><div class="schedule-battery"><span><i></i>Estimated battery <b>${fmt(first.soc_start,'%',0)} → ${fmt(rows.at(-1).soc_end,'%',0)}</b></span><span><i></i>Dashed: outage reserve</span></div><p data-schedule-detail class="schedule-detail" role="status">${esc(title(rows[this.selectedScheduleIndex(p)]||first))}</p><small class="muted">${esc(p.message)} Hover or tap a period for details. On mobile, swipe the timeline.</small><details><summary>About this preview</summary><p>${esc(p.assumptions)} The three-minute charge-recovery check is sampled at fifteen-minute resolution. The live controller rechecks every action.</p></details></section>`;
+    return `<section class="schedule-card">${header}<div class="schedule-summary"><b>${this.scheduleLabel(first)} now</b><span>${next?`${this.scheduleLabel(next)} around ${this.scheduleTime(next.start,zone,true)}`:'No source change expected at the current load'}</span></div><div class="schedule-meta"><span>${esc(p.basis)}</span><span>${esc(p.profile)}</span><span>Estimated, not fixed</span></div><div class="schedule-scroll" role="region" aria-label="Anticipated schedule timeline; scroll horizontally on small screens" tabindex="0"><div class="schedule-canvas"><div class="schedule-track" aria-label="Expected energy source by time">${rows.map((s,i)=>{const width=(s.end-s.start)/duration*100;return `<button class="schedule-step ${s.action}" style="flex-basis:${width}%" data-schedule-step="${i}" aria-label="${esc(title(s))}" title="${esc(title(s))}">${width>=9?`<ha-icon icon="${icons[s.action]}"></ha-icon><b>${this.scheduleLabel(s)}</b><small>${esc(s.tariff)}</small>`:''}</button>`;}).join('')}</div><div class="schedule-axis">${[0,4,8,12,16,20,24].map((h,i)=>`<span style="left:${h/24*100}%;transform:translateX(${i===0?0:i===6?-100:-50}%)">${i===0?'Now':this.scheduleTime(p.start+h*3600,zone,i===6)}</span>`).join('')}</div><svg class="schedule-soc" viewBox="0 0 1000 88" preserveAspectRatio="none" role="img" aria-label="Estimated battery percentage and outage reserve over the next 24 hours"><line x1="0" x2="1000" y1="14" y2="14" stroke="currentColor" opacity=".1"/><line x1="0" x2="1000" y1="74" y2="74" stroke="currentColor" opacity=".1"/><polyline points="${points.map(reserve).join(' ')}" fill="none" stroke="#2dd4bf" stroke-dasharray="5 5" stroke-width="1.5" vector-effect="non-scaling-stroke"/><polyline points="${points.map(point).join(' ')}" fill="none" stroke="#c4b5fd" stroke-width="2" vector-effect="non-scaling-stroke"/></svg></div></div><div class="schedule-legend">${Object.entries(labels).map(([key,label])=>`<span><i class="${key}"></i>${label} <b>${fmt(rows.filter(s=>s.action===key).reduce((h,s)=>h+(s.end-s.start)/3600,0),' h',1)}</b></span>`).join('')}</div><div class="schedule-battery"><span><i></i>Estimated battery <b>${fmt(first.soc_start,'%',0)} → ${fmt(rows.at(-1).soc_end,'%',0)}</b></span><span><i></i>Dashed: outage reserve</span></div><p data-schedule-detail class="schedule-detail" role="status">${esc(title(rows[this.selectedScheduleIndex(p)]||first))}</p><small class="muted">${esc(p.message)} Click or tap a period to keep its details selected. On mobile, swipe the timeline.</small><details><summary>About this preview</summary><p>${esc(p.assumptions)} The three-minute charge-recovery check is sampled at fifteen-minute resolution. The live controller rechecks every action.</p></details></section>`;
   }
   bindSchedule(){
     const p=this.model.data.schedule_preview;if(!p)return;
@@ -193,32 +202,51 @@ class HomeBatteryPanel extends HTMLElement {
     const selected=this.selectedScheduleIndex(p);
     buttons.forEach(e=>{
       const show=(remember=true)=>{const s=p.segments[Number(e.dataset.scheduleStep)],detail=this.shadowRoot.querySelector('[data-schedule-detail]');if(!s||!detail)return;if(remember)this.scheduleSelectedTime=(s.start+s.end)/2;buttons.forEach(b=>b.setAttribute('aria-pressed',String(b===e)));detail.textContent=`${this.scheduleLabel(s)} · ${this.scheduleTime(s.start,p.timezone,true,s.end-s.start<60)} – ${this.scheduleTime(s.end,p.timezone,true,s.end-s.start<60)} · ${s.tariff} · ${fmt(s.price,' USD/kWh',3)} · estimated battery ${fmt(s.soc_start,'%',0)} → ${fmt(s.soc_end,'%',0)} · ${s.reason}`;};
-      e.onpointerenter=show;e.onfocus=show;e.onclick=show;
+      // Enter events also fire on touch pans and when layout moves beneath a
+      // stationary pointer. Focus can be restored by HA/the renderer. Neither
+      // is a deliberate selection; native button activation handles keyboard.
+      e.onpointerenter=null;e.onfocus=null;
+      e.onclick=()=>{show();this.saveScheduleView();};
       if(Number(e.dataset.scheduleStep)===selected)show(false);
     });
+    const region=this.shadowRoot.querySelector('.schedule-scroll');
+    if(region)region.onscroll=()=>{this.scheduleScrollLeft=region.scrollLeft;this.saveScheduleView();};
+  }
+  saveScheduleView(){
+    const id=this._panel?.config?.entry_id;
+    if(id)scheduleViews.set(id,{time:this.scheduleSelectedTime,left:this.scheduleScrollLeft??0});
   }
   selectedScheduleIndex(preview){
     // Anchor to a clock time, not an array index: refreshed plans can split or
     // merge periods, and their moving "Now" boundary changes on every refresh.
     const rows=preview?.segments||[];
     const index=Number.isFinite(this.scheduleSelectedTime)?rows.findIndex(s=>s.start<=this.scheduleSelectedTime&&this.scheduleSelectedTime<s.end):-1;
-    if(index<0&&rows.length)this.scheduleSelectedTime=null;
+    if(index<0&&rows.length&&Number.isFinite(this.scheduleSelectedTime)&&
+      (this.scheduleSelectedTime<rows[0].start||this.scheduleSelectedTime>=rows.at(-1).end)){
+      this.scheduleSelectedTime=null;this.saveScheduleView();
+    }
     return index<0?0:index;
   }
   captureViewState(){
     const active=this.shadowRoot.activeElement;
-    return {tab:this.renderedTab,top:this.scrollTop,left:this.shadowRoot.querySelector('.schedule-scroll')?.scrollLeft,
+    const region=this.shadowRoot.querySelector('.schedule-scroll');
+    if(region)this.scheduleScrollLeft=region.scrollLeft;
+    this.saveScheduleView();
+    return {tab:this.renderedTab,top:this.scrollTop,left:this.scheduleScrollLeft,
       timelineFocus:active?.hasAttribute('data-schedule-step'),regionFocus:active?.classList?.contains('schedule-scroll')};
   }
   restoreViewState(view){
-    if(view.tab!==this.tab)return;
     const region=this.shadowRoot.querySelector('.schedule-scroll');
-    if(region&&view.left!==undefined)region.scrollLeft=view.left;
+    const left=view.left??this.scheduleScrollLeft;
+    if(region&&left!==undefined)region.scrollLeft=left;
+    if(view.tab!==this.tab)return;
     if(view.timelineFocus){
-      const index=this.selectedScheduleIndex(this.model.data.schedule_preview),time=this.scheduleSelectedTime;
-      this.shadowRoot.querySelector(`[data-schedule-step="${index}"]`)?.focus({preventScroll:true});
-      this.scheduleSelectedTime=time;
-    }else if(view.regionFocus)region?.focus({preventScroll:true});
+      const index=this.selectedScheduleIndex(this.model.data.schedule_preview);
+      const target=this.shadowRoot.querySelector(`[data-schedule-step="${index}"]`);
+      if(target&&this.shadowRoot.activeElement!==target)target.focus({preventScroll:true});
+    }else if(view.regionFocus&&this.shadowRoot.activeElement!==region)region?.focus({preventScroll:true});
+    // Some webviews still scroll a focused button despite preventScroll.
+    if(region&&left!==undefined)region.scrollLeft=left;
     this.scrollTop=view.top;
   }
   learningSummary(compact=false){
@@ -338,7 +366,7 @@ class HomeBatteryPanel extends HTMLElement {
     const markup=`<style>
     :host{display:block;height:100%;overflow:auto;background:var(--primary-background-color,#0c1726);color:var(--primary-text-color,#e7eef8);font-family:var(--primary-font-family,system-ui)}*{box-sizing:border-box}header{position:sticky;top:0;background:var(--card-background-color,#142436);z-index:2;padding:12px 24px;display:flex;gap:20px;align-items:center;border-bottom:1px solid #334155}header button{padding:8px}.title{font-size:20px;font-weight:750}main{max-width:1400px;margin:auto;padding:24px}nav{display:flex;gap:8px;overflow:auto;padding:8px 0}button,select,input{font:inherit;color:inherit}button,select,input[type=number]{background:var(--card-background-color,#172b40);border:1px solid #43576b;border-radius:12px;padding:12px;cursor:pointer}button:hover{border-color:#2dd4bf}nav button.active{color:#2dd4bf;border-color:#2dd4bf}h1{font-size:clamp(26px,3vw,40px);margin:14px 0 6px}h2{font-size:22px}p{line-height:1.6}small,.muted{color:var(--secondary-text-color,#a8bfd2)}small{display:block}.columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:20px 0}.tile,.hero,.note{background:var(--card-background-color,#15263b);border:1px solid #344558;border-radius:22px;padding:20px;margin:12px 0}.hero{background:linear-gradient(135deg,#173147,#102032);color:#e7eef8}.hero h2{margin-top:0}.tile strong{display:block;font-size:clamp(23px,2.5vw,36px);margin:8px 0;color:#2dd4bf;overflow-wrap:anywhere}.tile.amber strong{color:#fbbf24}.label{font-size:13px;text-transform:uppercase;letter-spacing:.06em}.pill{border:1px solid #507083;border-radius:20px;padding:6px 12px;display:inline-block;font-size:12px}.actions{display:flex;gap:12px}.actions button{flex:1}.flow{height:280px;position:relative;max-width:960px;margin:auto}.flow svg{position:absolute;width:100%;height:100%}.route{fill:none;stroke:#334155;stroke-width:2;vector-effect:non-scaling-stroke}.gridactive{stroke:#60a5fa;stroke-width:4;}.batactive{stroke:#fbbf24;stroke-width:4;}.chargeactive{stroke:#2dd4bf;stroke-width:4;}.node{position:absolute;border:1px solid #526e89;border-radius:18px;background:#142436;width:30%;height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center}.node strong{font-size:clamp(22px,3vw,34px)}.node ha-icon{width:24px;height:24px}.node.grid{left:0;top:0;color:#93c5fd}.node.loads{right:0;top:0;color:#ddd6fe}.node.battery{left:35%;top:150px;color:#5eead4}.node small{font-size:12px;color:#a8bfd2}.settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{display:flex;justify-content:space-between;align-items:center;gap:15px;background:var(--card-background-color,#15263b);padding:16px;border-radius:14px}.field span{flex:1}.field input[type=number]{width:120px}.field select{max-width:50%}.field input[type=checkbox]{width:24px;height:24px;accent-color:#2dd4bf}.cells{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cells>div{display:flex;gap:12px;align-items:center;padding:12px;background:var(--card-background-color,#15263b);border-radius:12px}.cells meter{flex:1;min-width:0}.forecast{display:flex;overflow:auto;gap:12px;margin-top:20px}.forecast article{min-width:90px;padding:16px;background:var(--card-background-color,#15263b);border-radius:14px;text-align:center}.range{display:flex;gap:12px;align-items:center;margin:20px 0}.trend-summary{display:flex;gap:24px;color:var(--secondary-text-color)}.trend-summary b{color:var(--primary-text-color)}.brand{width:36px;height:36px;object-fit:contain}.weather-top{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}.weather-top .tile strong{font-size:30px}.weather-details{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.weather-details .tile{padding:14px}.weather-details .tile strong{font-size:24px}.alert{border-left:4px solid #fbbf24}.alert p{white-space:pre-line}.error{background:#6b2020;padding:14px;border-radius:12px}a{color:#2dd4bf}@media(max-width:750px){main{padding:16px}.columns,.settings,.cells,.weather-top{grid-template-columns:1fr}.weather-details{grid-template-columns:repeat(2,1fr)}.actions{flex-wrap:wrap}header{padding:10px 16px}.node{width:31%;height:130px}.field{padding:12px}.hero{padding:14px}}
     
-    </style><link rel="stylesheet" href="/home_battery/charts.css?v=1.8.4"><header><button id="sidebar" aria-label="Open sidebar">☰</button><img class="brand" src="/home_battery/brand/icon.png" alt="Home Battery logo"><span class="title">Home Battery</span><span class="pill">${esc(d.scheduler_status)}</span></header><main><nav>${Object.entries(tabs).map(([key,name])=>`<button data-tab="${key}" class="${this.tab===key?'active':''}">${({overview:'<ha-icon icon="mdi:view-dashboard-outline"></ha-icon>',backup:'<ha-icon icon="mdi:shield-home-outline"></ha-icon>',savings:'<ha-icon icon="mdi:cash-multiple"></ha-icon>',health:'<ha-icon icon="mdi:battery-heart-outline"></ha-icon>',weather:'<ha-icon icon="mdi:weather-partly-cloudy"></ha-icon>',advanced:'<ha-icon icon="mdi:tune"></ha-icon>'})[key]}${name}</button>`).join('')}</nav>${['overview','backup'].includes(this.tab)?this.statusStrip(d):''}${this.error?`<p role="alert" class="error">${esc(this.error)}</p>`:''}<div id="transfer-status">${this.transferNotice(d)}</div>${this[this.tab](d)}${['overview','health'].includes(this.tab)?this.historyRange():''}${this.tab==='overview'?this.learningSummary(true):''}${this.tab==='overview'?this.trendGraph('load',this.model.settings.commissioned?'Critical-load usage':'Reference-load usage','W','#a78bfa'):''}${this.tab==='health'?this.trendGraph('spread','Cell difference trend','mV','#fbbf24',1000):''}${['overview','health'].includes(this.tab)?this.currentGraph():''}<p class="muted">Home Battery ${PANEL_VERSION}${m.version!==PANEL_VERSION?` · controller ${esc(m.version)} — reload this page to update the dashboard`:""} · measured DC throughput is separate from AC delivery and inferred capacity.</p></main>`;
+    </style><link rel="stylesheet" href="/home_battery/charts.css?v=1.8.5"><header><button id="sidebar" aria-label="Open sidebar">☰</button><img class="brand" src="/home_battery/brand/icon.png" alt="Home Battery logo"><span class="title">Home Battery</span><span class="pill">${esc(d.scheduler_status)}</span></header><main><nav>${Object.entries(tabs).map(([key,name])=>`<button data-tab="${key}" class="${this.tab===key?'active':''}">${({overview:'<ha-icon icon="mdi:view-dashboard-outline"></ha-icon>',backup:'<ha-icon icon="mdi:shield-home-outline"></ha-icon>',savings:'<ha-icon icon="mdi:cash-multiple"></ha-icon>',health:'<ha-icon icon="mdi:battery-heart-outline"></ha-icon>',weather:'<ha-icon icon="mdi:weather-partly-cloudy"></ha-icon>',advanced:'<ha-icon icon="mdi:tune"></ha-icon>'})[key]}${name}</button>`).join('')}</nav>${['overview','backup'].includes(this.tab)?this.statusStrip(d):''}${this.error?`<p role="alert" class="error">${esc(this.error)}</p>`:''}<div id="transfer-status">${this.transferNotice(d)}</div>${this[this.tab](d)}${['overview','health'].includes(this.tab)?this.historyRange():''}${this.tab==='overview'?this.learningSummary(true):''}${this.tab==='overview'?this.trendGraph('load',this.model.settings.commissioned?'Critical-load usage':'Reference-load usage','W','#a78bfa'):''}${this.tab==='health'?this.trendGraph('spread','Cell difference trend','mV','#fbbf24',1000):''}${['overview','health'].includes(this.tab)?this.currentGraph():''}<p class="muted">Home Battery ${PANEL_VERSION}${m.version!==PANEL_VERSION?` · controller ${esc(m.version)} — reload this page to update the dashboard`:""} · measured DC throughput is separate from AC delivery and inferred capacity.</p></main>`;
     if(this.tab==='overview'&&this.renderedTab===this.tab&&this.shadowRoot.ownerDocument){
       const template=this.shadowRoot.ownerDocument.createElement('template');template.innerHTML=markup;
       patchLiveDOM(this.shadowRoot,template.content);
