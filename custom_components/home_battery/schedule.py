@@ -13,7 +13,7 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
         'timezone':str(now.tzinfo),'start':now.timestamp(),'end':now.timestamp()+86400,
         'basis':'Checked load forecast' if weekly else 'Current-load estimate',
         'profile':settings['planning_goal'],
-        'assumptions':'15-minute estimate; current prices, weather and charging limits held constant. SOC/capacity are estimates. Solar, future cell voltages, outages and transfer delays are not predicted. This is not a queued command schedule.'}
+        'assumptions':'15-minute estimate, with 30-second steps for backup-reserve recovery; current prices, weather and charging limits held constant. SOC/capacity are estimates. Solar, future cell voltages, outages and transfer delays are not predicted. This is not a queued command schedule.'}
     if not data.get('fresh') or not data.get('healthy') or data.get('has_bms_alarm'):
         return result|{'message':'Waiting for fresh readings and clear battery protections.'}
     if numeric(data.get('soc')) is None or not 0<=data['soc']<=100 or (numeric(data.get('grid_voltage')) or 0)<=90:
@@ -57,6 +57,12 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
         charge_reason=preview_guard.evaluate(projected,settings,stamp)
         charge_requested=plan.decision in {'Recharge','Recover reserve','Charge','Keep ready'}
         allow_charge=not charge_reason and charge_requested
+        # A small rise in forecast demand may require a short reserve top-up.
+        # Match the live 30-second decision cadence rather than charging for an
+        # entire 15-minute bucket and falsely adding several SOC points.
+        if allow_charge and plan.decision=='Recharge':
+            stop=min(stop,stamp+30)
+            hours=(stop-stamp)/3600
         before=energy/cap*100
         action='battery' if priority=='SBU' else 'utility'
         if priority=='SBU':
@@ -73,6 +79,7 @@ def preview_schedule(now,data,settings,rates,charge_amps,pack_voltage,*,weekly=N
         tariff=price_window(when,settings)
         detail=plan.reason+('; charging paused: '+charge_reason if priority=='SUB' and charge_requested and charge_reason else '')
         step={'start':stamp,'end':stop,'action':action,'reason':detail,'tariff':tariff,
+              'purpose':'reserve_recovery' if action=='charge' and plan.decision=='Recharge' else 'scheduled',
               'price':rates[tariff],'soc_start':round(before,1),'soc_end':round(after,1),'reserve':round(plan.reserve_soc or 0,1)}
         if result['segments'] and all(result['segments'][-1][k]==step[k] for k in ('action','reason','tariff')):
             result['segments'][-1].update(end=stop,soc_end=step['soc_end'])

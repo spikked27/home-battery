@@ -85,5 +85,18 @@ class ScheduleTests(unittest.TestCase):
         self.assertTrue(before_night)
         self.assertTrue(all(s['action']=='utility' for s in before_night))
         self.assertTrue(any(s['action']=='charge' for s in result['segments']))
+    def test_small_forecast_reserve_rise_is_a_short_labeled_top_up(self):
+        self.now=self.now.replace(day=17,hour=20,minute=45)
+        self.settings['backup_hours']=1
+        self.data.update(load_w=300,average_load_w=300,discharge_w=380,soc=72)
+        weekly={str(d):[300]*24 for d in range(7)}
+        for profile in weekly.values(): profile[19]=330
+        result=self.run_preview(weekly=weekly)
+        recovery=[s for s in result['segments'] if s.get('purpose')=='reserve_recovery']
+        self.assertTrue(recovery,'Forecast demand rises after discretionary battery use ends')
+        self.assertTrue(all(s['end']-s['start']<900 for s in recovery),'A small reserve deficit must not create a full 15-minute charge block')
+        self.assertTrue(all(s['soc_end']-s['soc_start']<1 for s in recovery),'Do not invent a multi-point SOC top-up from a tiny deficit')
+        self.assertEqual(result['end']-result['start'],86400)
+        self.assertTrue(all(a['end']==b['start'] for a,b in zip(result['segments'],result['segments'][1:])))
 
 if __name__=='__main__': unittest.main()

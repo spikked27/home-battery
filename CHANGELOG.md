@@ -1,3 +1,9 @@
+# 1.8.3
+
+- Reconcile live Overview content in place instead of destroying its interactive timeline during telemetry updates. Preserve native scroll/focus and open details, including when transient notices appear or disappear.
+- Display the loaded dashboard bundle version rather than presenting the controller version as proof of a frontend update.
+- Label reserve maintenance as Restore backup and simulate those brief top-ups at the live 30-second cadence rather than a full 15-minute charge bucket. Reserve protection and live control policy are unchanged.
+
 # 1.8.2
 
 - Preserve the selected clock time, horizontal timeline position, keyboard focus and panel scroll across telemetry refreshes. Updated forecasts can split or merge periods without resetting inspection to the beginning.

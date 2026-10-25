@@ -256,3 +256,34 @@ console.log('9 timeline refresh continuity checks passed');
  assert.equal(calls,2,'A save during polling must request a follow-up refresh instead of disappearing');
  console.log('4 settings-save refresh checks passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+const patchDOM=vm.runInNewContext(source+'\npatchLiveDOM',{HTMLElement:class{},customElements:{define:()=>{}}});
+class TestDOMNode {
+ constructor(tag,attrs={},children=[]){this.nodeType=tag==='#text'?3:tag==='#root'?11:1;this.localName=tag;this.namespaceURI='html';this.values={...attrs};this.childNodes=[];this.nodeValue='';for(const c of children)this.insertBefore(c,null);}
+ get id(){return this.values.id||'';}get attributes(){return Object.entries(this.values).map(([name,value])=>({name,value}));}
+ hasAttribute(k){return k in this.values;}getAttribute(k){return this.values[k]??null;}setAttribute(k,v){this.values[k]=v;}removeAttribute(k){delete this.values[k];}
+ get firstChild(){return this.childNodes[0]||null;}get nextSibling(){return this.parent?.childNodes[this.parent.childNodes.indexOf(this)+1]||null;}
+ insertBefore(node,before){if(node.parent)node.parent.removeChild(node);const index=before?this.childNodes.indexOf(before):this.childNodes.length;this.childNodes.splice(index,0,node);node.parent=this;}
+ removeChild(node){this.childNodes.splice(this.childNodes.indexOf(node),1);node.parent=null;}
+ cloneNode(){const n=new TestDOMNode(this.localName,this.values,this.childNodes.map(c=>c.cloneNode(true)));n.nodeValue=this.nodeValue;return n;}
+}
+const textNode=value=>{const n=new TestDOMNode('#text');n.nodeValue=value;return n;};
+const oldRegion=new TestDOMNode('div',{class:'schedule-scroll'},[new TestDOMNode('button',{class:'schedule-step battery'},[textNode('old time')])]);
+oldRegion.scrollLeft=231;
+const oldDetails=new TestDOMNode('details',{open:''},[textNode('Help')]);
+const oldCard=new TestDOMNode('section',{class:'schedule-card'},[oldRegion,oldDetails]);
+const liveRoot=new TestDOMNode('#root',{},[new TestDOMNode('main',{},[oldCard])]);
+const newCard=new TestDOMNode('section',{class:'schedule-card'},[new TestDOMNode('div',{class:'schedule-scroll'},[new TestDOMNode('button',{class:'schedule-step battery'},[textNode('new time')])]),new TestDOMNode('details',{},[textNode('Updated help')])]);
+patchDOM(liveRoot,new TestDOMNode('#root',{},[new TestDOMNode('main',{},[new TestDOMNode('p',{class:'note'},[textNode('New notice')]),newCard])]));
+assert.equal(liveRoot.firstChild.childNodes[1],oldCard,'Retain the actual timeline card when an earlier notice is inserted');
+assert.equal(oldCard.firstChild,oldRegion,'Retain the actual scrolling element, not a replacement with a restored offset');
+assert.equal(oldRegion.scrollLeft,231,'Preserve native scroll state through data updates');
+assert.equal(oldRegion.firstChild.firstChild.nodeValue,'new time','Retaining the timeline must still update its forecast');
+assert(oldDetails.hasAttribute('open'),'Keep the user-expanded explanation open across updates');
+patchDOM(liveRoot,new TestDOMNode('#root',{},[new TestDOMNode('main',{},[newCard])]));
+assert.equal(liveRoot.firstChild.firstChild,oldCard,'Removing a transient notice must not recreate the timeline');
+assert.equal(liveRoot.firstChild.childNodes.length,1,'Remove stale siblings after reconciliation');
+assert.equal(Panel.prototype.scheduleLabel({purpose:'reserve_recovery',action:'charge'}),'Restore backup','Distinguish reserve recovery from cheap-price charging');
+console.log('8 persistent timeline DOM and recovery-label checks passed');
+
+assert.equal(vm.runInNewContext(source+'\nPANEL_VERSION',{HTMLElement:class{},customElements:{define:()=>{}}}),JSON.parse(fs.readFileSync('custom_components/home_battery/manifest.json','utf8')).version,'The dashboard must identify its own loaded bundle version accurately');
