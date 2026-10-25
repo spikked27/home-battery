@@ -1,3 +1,9 @@
+# 1.8.4
+
+- Preserve the requested outage duration while avoiding expensive routine top-ups of the extra planning allowance. Hold utility without charging when the requested hours remain covered; recharge normally during the cheap window. Genuine duration shortfalls and storm readiness retain recovery charging.
+- Explain when the backup target is covered while its planning allowance is in use.
+- Includes persistent timeline DOM and accurate short-recovery forecasting from 1.8.3.
+
 # 1.8.3
 
 - Reconcile live Overview content in place instead of destroying its interactive timeline during telemetry updates. Preserve native scroll/focus and open details, including when transient notices appear or disappear.

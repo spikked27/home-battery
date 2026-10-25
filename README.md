@@ -119,3 +119,5 @@ Choose **Battery energy in/out (BMS bridge)** when your source supplies trustwor
 HACS handles version updates. Preferences and accounting are stored by HA; dashboard and device entities install together. Download integration diagnostics before filing a [bug](https://github.com/spikked27/home-battery/issues). Back up HA before migration; removing old helpers is a separate operation, and existing historical entity IDs are not silently reassigned.
 
 See [feature support](docs/support.md), [migration](docs/migration.md), [development](docs/development.md) and [changelog](CHANGELOG.md).
+
+Outside the low-price charging window, small reserve fluctuations within the backup estimate allowance use utility without charging. Discretionary battery use still stops at the calculated reserve. Recovery charging is permitted only when estimated remaining backup falls below the requested hours, or storm readiness requires it. The allowance is extra planning headroom, not a second user reserve minimum.

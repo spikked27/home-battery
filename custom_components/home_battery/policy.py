@@ -95,7 +95,8 @@ def make_plan(now, data, settings, rates, storm=False):
     demand = max(load/(settings["discharge_efficiency"]/100)+settings["overhead_w"],data["discharge_w"])
     # Hours are the single normal backup target. Legacy percentage options are
     # deliberately ignored, including when retained in an existing HA entry.
-    reserve = settings["backup_hours"]*demand/1000/capacity*100*(1+settings["reserve_margin"]/100)
+    required_reserve = settings["backup_hours"]*demand/1000/capacity*100
+    reserve = required_reserve*(1+settings["reserve_margin"]/100)
     if storm:
         reserve = max(reserve,settings["storm_reserve"])
     reserve = min(100,reserve)
@@ -115,13 +116,15 @@ def make_plan(now, data, settings, rates, storm=False):
         return Plan("Keep ready","Reserve needs approach the charge target; use grid", "SUB",reserve,runtime)
     if storm:
         return Plan("Keep ready","Storm reserve advised", "SUB",reserve,runtime)
-    if soc < reserve-1e-6:
-        return Plan("Recharge","Battery is below the required outage reserve", "SUB",reserve,runtime)
     window = price_window(now,settings)
     if in_charge_window(now,settings):
         return Plan("Charge" if soc < settings["charge_target"] else "Target reached",
                     "Low-price charge window" if soc < settings["charge_target"] else "Charge target reached; use utility with utility charging disabled",
                     "SUB",reserve,runtime)
+    if soc < required_reserve-1e-6:
+        return Plan("Recharge","Estimated backup time is below the requested outage duration", "SUB",reserve,runtime)
+    if soc < reserve-1e-6:
+        return Plan("Hold reserve","Requested backup time is covered; use utility without topping up the planning allowance until the next low-price window", "SUB",reserve,runtime)
     if data.get('reserve_hold') or soc<=reserve+1e-6:
         return Plan("Hold reserve","Daily battery allocation used; keep utility until the next low-price charging window", "SUB",reserve,runtime)
     if not rates:

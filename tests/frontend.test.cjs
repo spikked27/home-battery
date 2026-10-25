@@ -287,3 +287,7 @@ assert.equal(Panel.prototype.scheduleLabel({purpose:'reserve_recovery',action:'c
 console.log('8 persistent timeline DOM and recovery-label checks passed');
 
 assert.equal(vm.runInNewContext(source+'\nPANEL_VERSION',{HTMLElement:class{},customElements:{define:()=>{}}}),JSON.parse(fs.readFileSync('custom_components/home_battery/manifest.json','utf8')).version,'The dashboard must identify its own loaded bundle version accurately');
+
+const allowanceStatus=Panel.prototype.statusStrip.call({model:{settings:{backup_hours:1}}},{soc:8,reserve_soc:9,runtime_hours:1.1,storm:false});
+assert(allowanceStatus.includes('Backup time covered')&&!allowanceStatus.includes('soc-fill low'),'Do not call a consumed planning allowance a failed outage target');
+assert(Panel.prototype.statusStrip.call({model:{settings:{backup_hours:1}}},{soc:8,reserve_soc:50,runtime_hours:1.1,storm:true}).includes('Below reserve'),'Storm reserve remains authoritative');

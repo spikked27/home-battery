@@ -100,7 +100,7 @@ class PolicyTests(unittest.TestCase):
         self.d['soc']=floor
         plan,held=p.plan_with_reserve_hold(self.now,self.d,self.settings,self.rates)
         self.assertTrue(held);self.assertEqual(plan.decision,'Hold reserve')
-        self.d['soc']=floor-1
+        self.d['soc']=floor/(1+self.settings['reserve_margin']/100)-1
         plan,held=p.plan_with_reserve_hold(self.now,self.d,self.settings,self.rates,reserve_hold=held)
         self.assertEqual(plan.decision,'Recharge')
         self.d['soc']=floor+5
@@ -123,6 +123,24 @@ class PolicyTests(unittest.TestCase):
         self.settings['backup_hours']=72
         self.assertEqual(self.plan().reserve_soc,100)
         self.assertEqual(self.plan().desired_priority,'SUB')
+    def test_planning_allowance_shortfall_does_not_trigger_expensive_top_up(self):
+        self.d.update(load_w=300,discharge_w=0)
+        self.settings['backup_hours']=1
+        floor=self.plan().reserve_soc
+        self.d['soc']=floor-.2
+        plan=self.plan()
+        self.assertEqual(plan.decision,'Hold reserve')
+        self.assertEqual(plan.desired_priority,'SUB')
+        self.assertGreater(plan.runtime_hours,1)
+        self.assertIn('without topping up',plan.reason)
+        self.now=self.now.replace(hour=23)
+        self.assertEqual(self.plan().decision,'Charge')
+    def test_genuine_duration_shortfall_and_storm_still_allow_recovery(self):
+        self.settings['backup_hours']=1
+        self.d.update(load_w=300,discharge_w=0,soc=5)
+        self.assertEqual(self.plan().decision,'Recharge')
+        self.assertLess(self.plan().runtime_hours,1)
+        self.assertEqual(p.make_plan(self.now,self.d,self.settings,self.rates,True).decision,'Keep ready')
     def test_stale_or_outage_does_not_clear_reserve_hold(self):
         for change in ({'fresh':False},{'grid_voltage':0},{'soc':float('nan')}):
             _,held=p.plan_with_reserve_hold(self.now.replace(hour=23),self.d|change,self.settings,self.rates,reserve_hold=True)
