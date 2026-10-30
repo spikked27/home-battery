@@ -341,3 +341,6 @@ assert.equal(vm.runInNewContext(source+'\nPANEL_VERSION',{HTMLElement:class{},cu
 const allowanceStatus=Panel.prototype.statusStrip.call({model:{settings:{backup_hours:1}}},{soc:8,reserve_soc:9,runtime_hours:1.1,storm:false});
 assert(allowanceStatus.includes('Backup time covered')&&!allowanceStatus.includes('soc-fill low'),'Do not call a consumed planning allowance a failed outage target');
 assert(Panel.prototype.statusStrip.call({model:{settings:{backup_hours:1}}},{soc:8,reserve_soc:50,runtime_hours:1.1,storm:true}).includes('Below reserve'),'Storm reserve remains authoritative');
+const limitedReserve=Panel.prototype.statusStrip.call({model:{settings:{backup_hours:1}}},{soc:70,reserve_soc:20,runtime_hours:8,reserve_details:{inverter_floor_active:true,inverter_grid_soc:20,inverter_shutdown_soc:10}});
+assert(limitedReserve.includes('Inverter grid floor 20%'),'Explain the effective inverter floor next to the single hours target');
+assert(limitedReserve.includes('bottom 10%'),'Do not promise inaccessible shutdown energy as outage runtime');

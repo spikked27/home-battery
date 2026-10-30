@@ -41,6 +41,17 @@ async def test_source_units_are_validated(hass):
     hass.states.async_set("sensor.kw",.5,{"unit_of_measurement":"kW"})
     assert validate_sources(hass,{"load_entity":"sensor.kw"})=={}
 
+
+async def test_reserve_limits_are_read_from_fresh_bridge_settings(coordinator):
+    raw=coordinator.topics['raw_readings']
+    raw.update(QPRTL={'ascii':'(HPVINV09\r'},HEEP1={'ascii':'(1 030 009 14401110120 112 1 1 1 0 1 010 020 025 050 056.4 056.4 042.0 010 000 \r','age_seconds':2})
+    d=coordinator.measurements()
+    assert d['inverter_limits_ready'] is True
+    assert d['inverter_grid_soc']==20
+    assert d['inverter_shutdown_soc']==10
+    raw['HEEP1']['age_seconds']=61
+    assert coordinator.measurements()['inverter_limits_ready'] is False
+
 async def test_cold_probe_converts_fahrenheit_and_rejects_stale_values(hass,coordinator):
     coordinator.sources['cold_temperature_entity']='sensor.cold_probe'
     hass.states.async_set('sensor.cold_probe',53.6,{'unit_of_measurement':'°F'})

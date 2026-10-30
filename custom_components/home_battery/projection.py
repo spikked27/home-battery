@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from .policy import plan_with_reserve_hold, numeric, price_window
 
 
-def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, storm=False, weekly_profiles=None):
+def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, storm=False, weekly_profiles=None,inverter_limits=None):
     """Repeat the observed 24h profile, settle 14 days, then model a week.
 
     Model the controller's charge permission separately from SUB source choice.
@@ -14,6 +14,8 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
     # repeats all year. Thermal advances are disclosed separately in the UI;
     # their actual charging cost remains in the recorded operation ledger.
     settings=dict(settings,thermal_enabled=False)
+    inverter_limits=inverter_limits or {}
+    if inverter_limits.get('inverter_limits_ready') is False:return None
     if len(hourly_w)!=24 or any(numeric(v) is None or not 0<=v<=10000 for v in hourly_w):
         return None
     if not rates or numeric(charge_amps) is None or charge_amps<0 or numeric(pack_voltage) is None or not 20<=pack_voltage<=70:
@@ -40,6 +42,7 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
         data={"soc":energy/cap*100,"load_w":load,"average_load_w":sum(profile)/24,
               "charge_w":0.,"discharge_w":demand if priority=="SBU" else 0.,
               "grid_voltage":120.,"fresh":True,"healthy":True,"mode":"Battery" if priority=="SBU" else "Line","priority":priority}
+        data.update(inverter_limits)
         plan,reserve_hold=plan_with_reserve_hold(when,data,settings,rates,storm,reserve_hold)
         if energy>=target-1e-9: charge_latched=True
         if energy<=target-cap*.05: charge_latched=False
@@ -75,7 +78,7 @@ def project_savings(now, hourly_w, settings, rates, charge_amps, pack_voltage, s
             "operating_cost_day":(operating+wear+replenishment)/7,
             "charge_limit_a":charge_amps,"model":("Learned weekday/weekend hourly profiles" if weekly_profiles else "Observed 24-hour load repeated")+"; 14-day settling period and 7-day simulation",
             "assumptions":["Current monthly prices held constant; annual value is a run rate, not a tariff forecast",
-                "Configured capacity, efficiencies, idle use and reserve margin",
+                "Configured capacity, efficiencies, idle use, reserve margin and read-back inverter SOC floors",
                 "Grid charging only when the planner requests recharge; grid hold does not top up",
                 "Configured DC current, SOC target and five-point recharge hysteresis; SOC accuracy unverified",
                 "Cell limits, protection trips, switching delays and HA outages not simulated",

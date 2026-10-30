@@ -28,6 +28,13 @@ class ProjectionTests(unittest.TestCase):
         result=self.run_model(0)
         self.assertEqual(result["shifted_kwh_day"],0)
         self.assertLessEqual(result["day"],0)
+    def test_readback_limits_change_savings_and_missing_limits_disable_projection(self):
+        self.settings.update(backup_hours=1)
+        original=project(self.now,[330.]*24,self.settings,self.rates,30,52)
+        limited=project(self.now,[330.]*24,self.settings,self.rates,30,52,
+                        inverter_limits={'inverter_limits_ready':True,'inverter_grid_soc':20,'inverter_shutdown_soc':10})
+        self.assertLess(limited['shifted_kwh_day'],original['shifted_kwh_day'])
+        self.assertIsNone(project(self.now,[330.]*24,self.settings,self.rates,9,52,inverter_limits={'inverter_limits_ready':False}))
     def test_run_rates_are_labeled_and_consistent(self):
         result=self.run_model()
         self.assertAlmostEqual(result["year"],result["day"]*365.25)

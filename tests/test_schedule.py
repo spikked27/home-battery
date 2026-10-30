@@ -22,6 +22,14 @@ class ScheduleTests(unittest.TestCase):
         self.rates={'Super off-peak':.1,'Off-peak':.2,'Peak':.5}
     def run_preview(self,**kwargs):
         return preview(self.now,self.data,self.settings,self.rates,9,52,**kwargs)
+    def test_preview_uses_inverter_floor_in_every_future_interval(self):
+        self.settings.update(backup_hours=1)
+        self.data.update(soc=25,load_w=300,average_load_w=300,discharge_w=380,
+                         inverter_shutdown_soc=10,inverter_grid_soc=20,inverter_limits_ready=True)
+        result=self.run_preview()
+        self.assertEqual(result['status'],'Estimated')
+        self.assertTrue(all(s['reserve']>=20 for s in result['segments']))
+        self.assertTrue(all(p['soc']>=20 for p in result['points']))
     def test_learning_fallback_is_a_real_24_hour_plan(self):
         result=self.run_preview()
         self.assertEqual(result['basis'],'Current-load estimate')

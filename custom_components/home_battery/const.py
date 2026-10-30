@@ -1,6 +1,6 @@
 """Public contracts and validated local planning settings."""
 DOMAIN = "home_battery"
-VERSION = "1.9.3"
+VERSION = "1.9.4"
 PLATFORMS = ["sensor","binary_sensor","select","number","switch","button"]
 DEFAULTS = {
     "thermal_enabled":False,"thermal_availability":False,"thermal_charge_floor":8,"thermal_extra_budget":.25,

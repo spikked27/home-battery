@@ -22,7 +22,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DEFAULTS, DOMAIN, PSEG_URL
 from .charge_guard import ChargeGuard, CHARGE_OFF, CHARGE_ON, high_charge_discharge_allowed
-from .policy import cell_extremes, plan_with_reserve_hold, money_rates, numeric, pseg_rates, price_window, normalize_planning_goal, planning_profile
+from .policy import cell_extremes, plan_with_reserve_hold, money_rates, numeric, pseg_rates, price_window, normalize_planning_goal, planning_profile, inverter_soc_limits, reserve_details
 from .projection import project_savings
 from .learning import learn_load,HISTORY_DAYS
 from .schedule import preview_schedule
@@ -194,6 +194,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
             ("cold_temperature","cold_temperature_entity",{UnitOfTemperature.CELSIUS,UnitOfTemperature.FAHRENHEIT}),
             ("energy_in","energy_in_entity",{"kWh","Wh"}),("energy_out","energy_out_entity",{"kWh","Wh"})]}
         raw=self.topics.get("raw_readings",{})
+        d.update(inverter_soc_limits(raw))
         d['cold_temperature_source']=self.sources.get('cold_temperature_entity')
         mode=raw.get("HSTS",{}).get("ascii","") if isinstance(raw,dict) else ""
         tokens=mode.lstrip("(").split()
@@ -405,6 +406,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
             'weather':forecast,'price':rates[price_window(now,self.settings)] if rates else None}
         thermal=thermal_advice(now,d,self.settings,d['thermal_context'])
         plan,held=plan_with_reserve_hold(now,d,self.settings,rates,storm,self.reserve_hold)
+        demand=max((max(d['load_w'],d.get('average_load_w',0))/(self.settings['discharge_efficiency']/100)+self.settings['overhead_w']) if d['load_w'] is not None else 0,d['discharge_w'] or 0)
+        reserve_components=reserve_details(d,self.settings,demand,storm)
         d['scheduled_charge_block']=bool(self.settings.get('thermal_enabled') and self.settings['automatic_enabled']
             and time.time()>=self.hold_until
             and plan.decision not in {'Recharge','Recover reserve','Charge','Keep ready','Cold-weather charge'})
@@ -416,7 +419,7 @@ class BatteryCoordinator(DataUpdateCoordinator):
         charge_reason=self.charge_guard.evaluate(d,self.settings,time.time())
         data=dict(d,**(extreme or {}),plan=plan.decision,reason=plan.reason,reserve_soc=plan.reserve_soc,
                   thermal=thermal,thermal_status=thermal['status'],thermal_early_charge_cost=thermal.get('cost_today',0),
-                  runtime_hours=plan.runtime_hours,economic_margin=plan.economic_margin,
+                  runtime_hours=plan.runtime_hours,economic_margin=plan.economic_margin,reserve_details=reserve_components,
                   tariff=period,weather_mode=weather_mode,storm=storm,current_price=rates[period] if rates else None,
                   overnight_price=rates["Super off-peak"] if rates else None,
                   price_status="Manual prices" if self.settings["price_source"]=="Manual prices" else "Published PSEG estimate" if rates else "Rates unavailable / review needed",
@@ -454,9 +457,10 @@ class BatteryCoordinator(DataUpdateCoordinator):
                 error_w=self.learning.get('typical_error_w') or 0,storm=storm,
                 guard=self.charge_guard.saved()))
         weekly=self.learning.get('profiles_by_weekday') if profile and self.learning.get('status')=='Ready' else None
-        key=repr((profile,weekly,self.settings,rates,amps,pack_voltage,storm,now.date()))
+        inverter_limits={k:d[k] for k in ('inverter_limits_ready','inverter_shutdown_soc','inverter_grid_soc') if k in d}
+        key=repr((profile,weekly,self.settings,rates,amps,pack_voltage,storm,now.date(),inverter_limits))
         if key!=self.projection_cache[0]:
-            projected=project_savings(now,profile,self.settings,rates,amps,pack_voltage,storm,weekly_profiles=weekly) if profile else None
+            projected=project_savings(now,profile,self.settings,rates,amps,pack_voltage,storm,weekly_profiles=weekly,inverter_limits=inverter_limits) if profile else None
             self.projection_cache=(key,projected)
         projected=self.projection_cache[1]
         for period_key in ("day","month","year"):
@@ -467,6 +471,8 @@ class BatteryCoordinator(DataUpdateCoordinator):
         data["weather_alert_count"]=len(self.nws_alerts) if self.sources.get("nws_alert_zone") and time.time()-self.nws_seen<900 else None
         self.attributes["weather_alert_count"]={"events":self.nws_alerts,"last_successful_fetch":self.nws_seen,"source":"National Weather Service"}
         self.attributes["plan"]=asdict(plan)|{"automatic_switching":self.settings["automatic_enabled"],"assumed_capacity_kwh":self.settings["capacity_kwh"],"reserve_hold":self.reserve_hold}
+        self.attributes['reserve_soc']=reserve_components
+        self.attributes['runtime_hours']={'inverter_shutdown_soc':reserve_components['inverter_shutdown_soc'],'basis':'Estimated energy above configured shutdown SOC; voltage/cell protections may stop backup earlier'}
         self.attributes["current_price"]={"source_url":PSEG_URL,"month":self.rate_month,"last_fetch":self.last_fetch,"delivery_year":2026,"account_adjustments_included":False}
         self.attributes["highest_cell"]={"positions":extreme["highest_positions"] if extreme else [],"ordering":"Selected source list, left to right"}
         self.attributes["lowest_cell"]={"positions":extreme["lowest_positions"] if extreme else [],"ordering":"Selected source list, left to right"}

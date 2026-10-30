@@ -1,3 +1,10 @@
+# 1.9.4
+
+- Honor the HPVINV09's fresh, read-back grid-transfer SOC floor in live scheduling, the 24-hour plan, and projected savings. Keep the user's single hours-based outage target; never lower inverter/BMS protection settings automatically.
+- Calculate backup energy above the configured inverter shutdown SOC. Explain the effective grid floor and excluded shutdown energy beside the reserve display.
+- Recalculate savings when inverter boundaries change. Pause planning for this known inverter when its SOC-limit readback is missing, malformed, or stale. Threshold precedence and voltage/cell-based cutoff behavior remain uncommissioned.
+- Add policy, forecast, financial-model, HA-backed readback, and dashboard rendering regressions.
+
 # 1.9.3
 
 - Keep a started paid cold-weather charge stable above target-minus-five until the normal target, temperature/other protection, or cost budget stops it.

@@ -27,6 +27,39 @@ def numeric(value):
         return None
 
 
+def inverter_soc_limits(raw):
+    """Read this model's configured SOC boundaries; never infer voltage/SOC.
+
+    Honoring a configured boundary in software does not establish which
+    hardware threshold takes precedence in BMS mode.
+    """
+    if not isinstance(raw,dict) or raw.get('QPRTL',{}).get('ascii','').strip()!='(HPVINV09':
+        return {}
+    block=raw.get('HEEP1',{})
+    age=numeric(block.get('age_seconds'))
+    fields=block.get('ascii','').lstrip('(').split()
+    if age is None or not 0<=age<60 or len(fields)!=19:
+        return {'inverter_limits_ready':False}
+    shutdown=numeric(fields[10]);grid=numeric(fields[11])
+    if shutdown is None or grid is None or not 0<=shutdown<100 or not 0<=grid<=100:
+        return {'inverter_limits_ready':False}
+    return {'inverter_limits_ready':True,'inverter_shutdown_soc':shutdown,'inverter_grid_soc':grid}
+
+
+def reserve_details(data,settings,demand,storm=False):
+    """SOC below the configured shutdown point is not promised as backup."""
+    shutdown=numeric(data.get('inverter_shutdown_soc')) or 0
+    grid=numeric(data.get('inverter_grid_soc')) or 0
+    hours_soc=settings['backup_hours']*demand/1000/settings['capacity_kwh']*100
+    required=min(100,shutdown+hours_soc)
+    duration=min(100,shutdown+hours_soc*(1+settings['reserve_margin']/100))
+    reserve=min(100,max(duration,grid,settings['storm_reserve'] if storm else 0))
+    return {'required_reserve_soc':required,'duration_reserve_soc':duration,
+            'inverter_grid_soc':grid,'inverter_shutdown_soc':shutdown,
+            'reserve_soc':reserve,'inverter_floor_active':grid>duration and not storm,
+            'basis':'Configured SOC boundaries; voltage/cell cutoffs can stop backup earlier; hardware precedence unverified'}
+
+
 def federal_holidays(year):
     """Observed federal holidays used by PSEG Rate 195."""
     def observed(day):
@@ -88,6 +121,8 @@ def make_plan(now, data, settings, rates, storm=False):
     required = ("soc","load_w","discharge_w","charge_w","grid_voltage")
     if any(numeric(data.get(key)) is None for key in required) or not data.get("fresh"):
         return Plan("Paused","Waiting for fresh battery, inverter and load readings",None)
+    if data.get('inverter_limits_ready') is False:
+        return Plan('Paused','Waiting for fresh inverter SOC-limit readback',None)
     soc, load = data["soc"], max(data["load_w"],data.get("average_load_w",0))
     if not 0 <= soc <= 100 or not 0 <= load <= 10000:
         return Plan("Paused","A measurement is outside its accepted range",None)
@@ -95,12 +130,10 @@ def make_plan(now, data, settings, rates, storm=False):
     demand = max(load/(settings["discharge_efficiency"]/100)+settings["overhead_w"],data["discharge_w"])
     # Hours are the single normal backup target. Legacy percentage options are
     # deliberately ignored, including when retained in an existing HA entry.
-    required_reserve = settings["backup_hours"]*demand/1000/capacity*100
-    reserve = required_reserve*(1+settings["reserve_margin"]/100)
-    if storm:
-        reserve = max(reserve,settings["storm_reserve"])
-    reserve = min(100,reserve)
-    runtime = capacity*soc/100*1000/demand if demand > 0 else None
+    limits=reserve_details(data,settings,demand,storm)
+    required_reserve=limits['required_reserve_soc']
+    reserve=limits['reserve_soc']
+    runtime = capacity*max(0,soc-limits['inverter_shutdown_soc'])/100*1000/demand if demand > 0 else None
     if not data.get("healthy"):
         if data.get("bridge_ready") and data.get("has_bms_alarm") and data["grid_voltage"]>90:
             return Plan("Protection hold","Use utility with charging blocked while battery protection needs attention", "SUB",reserve,runtime)

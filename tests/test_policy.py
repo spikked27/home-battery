@@ -24,6 +24,38 @@ class PolicyTests(unittest.TestCase):
     def test_prices(self):
         self.assertEqual(self.rates,{"Super off-peak":.12852,"Off-peak":.2321,"Peak":.518057})
         self.assertIsNone(p.pseg_rates(self.now.replace(year=2027),.1392))
+    def test_readback_soc_floors_bound_reserve_without_charging_allowance(self):
+        self.settings.update(backup_hours=1,capacity_kwh=5.2)
+        self.d.update(load_w=300,discharge_w=0,inverter_grid_soc=20,inverter_shutdown_soc=10,inverter_limits_ready=True)
+        self.d['soc']=21
+        self.assertEqual(self.plan().desired_priority,'SBU')
+        self.assertEqual(self.plan().reserve_soc,20)
+        demand=300/.9+45
+        self.assertAlmostEqual(self.plan().runtime_hours,5.2*.11*1000/demand)
+        self.d['soc']=19
+        self.assertEqual(self.plan().decision,'Hold reserve')
+        self.d['soc']=16
+        self.assertEqual(self.plan().decision,'Recharge')
+    def test_unknown_threshold_precedence_does_not_lower_software_floor(self):
+        self.settings.update(backup_hours=.25)
+        self.d.update(soc=20,inverter_grid_soc=20,inverter_shutdown_soc=10)
+        self.assertEqual(self.plan().reserve_soc,20)
+        self.assertEqual(self.plan().desired_priority,'SUB')
+        self.d.update(grid_voltage=0,soc=9)
+        self.assertEqual(self.plan().decision,'Outage')
+        self.assertEqual(self.plan().runtime_hours,0)
+    def test_missing_known_inverter_limits_pause_instead_of_assuming_zero(self):
+        self.d['inverter_limits_ready']=False
+        self.assertIsNone(self.plan().desired_priority)
+        self.assertIn('SOC-limit readback',self.plan().reason)
+    def test_soc_limits_require_specific_model_fresh_readback_and_valid_fields(self):
+        raw={'QPRTL':{'ascii':'(HPVINV09\r'},'HEEP1':{'ascii':'(1 030 009 14401110120 112 1 1 1 0 1 010 020 025 050 056.4 056.4 042.0 010 000 \r','age_seconds':1}}
+        self.assertEqual(p.inverter_soc_limits(raw),{'inverter_limits_ready':True,'inverter_shutdown_soc':10,'inverter_grid_soc':20})
+        raw['HEEP1']['age_seconds']=61
+        self.assertEqual(p.inverter_soc_limits(raw),{'inverter_limits_ready':False})
+        raw['HEEP1']['age_seconds']=1;raw['HEEP1']['ascii']=raw['HEEP1']['ascii'].replace('010 020','nan 020')
+        self.assertEqual(p.inverter_soc_limits(raw),{'inverter_limits_ready':False})
+        self.assertEqual(p.inverter_soc_limits({'QPRTL':{'ascii':'(OtherModel\r'}}),{})
     def test_peak_economic_discharge(self):self.assertEqual(self.plan().desired_priority,"SBU")
     def test_all_profiles_operate_while_learning(self):
         for goal in c.SELECTS['planning_goal']:

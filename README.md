@@ -6,6 +6,8 @@ History charts support hover, touch and keyboard inspection of recorded values a
 
 Local Home Assistant energy management for a critical-load battery system: readable controls, outage reserve, weather readiness, time-of-use scheduling and estimated net savings.
 
+The outage duration remains the single normal reserve input. For the supported HPVINV09 bridge, fresh inverter settings also bound the plan: configured shutdown SOC is excluded from estimated outage energy, and the utility-transfer SOC setting is a minimum operating reserve. For example, a one-hour target can require a 20% reserve because the inverter is set to transfer to utility at 20%; the dashboard explains that floor. Live decisions, the 24-hour preview and savings use the same limits. These settings are read, never automatically lowered. BMS-mode precedence and voltage/cell cutoff behavior remain uncommissioned, so estimates cannot guarantee runtime. Missing/stale SOC-limit readback pauses planning for this model.
+
 [![Tests](https://github.com/spikked27/home-battery/actions/workflows/tests.yml/badge.svg)](https://github.com/spikked27/home-battery/actions/workflows/tests.yml)
 [![Open HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=spikked27&repository=home-battery&category=integration)
 
@@ -20,7 +22,7 @@ Learning refreshes every fifteen minutes with recency-weighted weekday/weekend p
 - All 25 established DATOUBOSS HPVINV09 bridge configuration points, with bridge-advertised options, human-readable explanations and confidence metadata. Unknown enum codes remain explicitly unknown.
 - Verified manual SUB/SBU commands with readback acknowledgement, exclusive command handling, non-retained MQTT messages and fault latching.
 - Automatic SUB/SBU scheduling with reserve-first decisions, economical off-peak/peak use, federal-holiday handling, manual override hold, restart grace period and five-minute switching cooldown.
-- Configurable outage hours, usable capacity, reserve floor/margin, storm reserve, efficiencies, overhead, wear cost and minimum economic margin.
+- Configurable outage hours, battery capacity, reserve margin, storm reserve, efficiencies, overhead, wear cost and minimum economic margin; inverter SOC floors are read automatically.
 - Automatic PSEG Long Island Rate 195 monthly supply lookup plus the verified 2026 delivery table, or manual three-period prices.
 - Forward-only estimated daily/monthly/yearly net savings; battery charge/discharge energy sensors suitable for the HA Energy dashboard.
 - Highest/lowest cell positions, cell spread, battery temperature, current, alarms and cumulative throughput.
