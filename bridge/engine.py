@@ -43,7 +43,11 @@ class SerialBackend:
   start=time.monotonic();raw=b""
   self.audit("backend_request",command=cmd,raw_hex=request.hex())
   try:
-   self.port.write(request);self.port.flush()
+   # FTDI tx_empty/tcdrain polls modem status using USB control transfers.
+   # Bounded write plus the complete reply confirms delivery without those
+   # redundant polls. An uncertain partial request must never be retried.
+   if self.port.write(request)!=len(request):
+    raise OSError("Incomplete serial request; delivery is uncertain")
    while time.monotonic()-start<3 and len(raw)<4096:
     raw+=self.port.read(1)
     if raw.endswith(b"\r"):break

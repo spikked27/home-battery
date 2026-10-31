@@ -4,6 +4,10 @@ The MQTT integration requires a bridge. This directory contains the established 
 
 Supported profile: HPVINV09 firmware `0010.03 20260202`, 2400 baud 8N1, no flow control, CR framing for H reads and established CRC framing for whitelisted writes. Unknown commands are rejected. The serial worker checks ownership before opening, uses exclusive access, spaces queries by at least two seconds, audits all traffic and verifies complete settings readback after writes.
 
+The 2026.10.31.1 bridge adds captured ACK/full-readback support for 5% SOC shutdown, 10% utility-transfer SOC and 44 V utility-transfer voltage. These are selectable values, not automatically applied defaults or recommendations for every battery. The low-SOC/voltage physical cutoff precedence remains uncommissioned; keep independent BMS protections and a battery-specific reserve. Coordination of Daly SOC alarms is a separate maintenance operation, not performed by this bridge.
+
+Serial delivery uses a bounded complete write followed by a bounded CR-framed reply, without repeated `tcdrain` modem-status requests on FTDI adapters. Disconnects still fault the current exchange; uncertain writes are not retried.
+
 ## Foreground setup
 
 Do not run alongside SolarAssistant or another owner of the serial port. Configure device permissions for the dedicated bridge account; do not grant general passwordless sudo. On Linux with Python 3.10+, `fuser` and `mountpoint` already installed:

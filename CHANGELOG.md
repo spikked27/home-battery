@@ -1,3 +1,8 @@
+# Unreleased — optional Pi bridge
+
+- Add verified stored values for 5% inverter SOC shutdown, 10% utility transfer and 44 V transfer voltage; retain a bounded command whitelist and independent protection requirements. This does not change any user's inverter settings automatically.
+- Avoid redundant FTDI modem-status requests during serial transmit drain; retain complete-write checks, response deadlines and no automatic retry of uncertain writes.
+
 # 1.9.4
 
 - Honor the HPVINV09's fresh, read-back grid-transfer SOC floor in live scheduling, the 24-hour plan, and projected savings. Keep the user's single hours-based outage target; never lower inverter/BMS protection settings automatically.

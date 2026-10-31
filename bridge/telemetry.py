@@ -1,7 +1,7 @@
 """Freshness-checked telemetry using previously established field mappings."""
 import math
 from core import parse
-VERSION='2026.10.13.1'
+VERSION='2026.10.31.1'
 # key, name, block, zero-based field, unit, Home Assistant device class
 SENSORS=[
  ('grid_voltage','Utility voltage','HGRID',0,'V','voltage'),
